@@ -18,3 +18,18 @@
 - Añadir VI init (0x59) — necesita structs con parámetros de sensor
 - Añadir VENC init (0x65) — necesita structs con codec params
 - Probar streaming (VI capture + VENC encode)
+
+## 2026-06-28 (cont) — GK init completo: 17 ioctls OK
+
+ioctls funcionando sin Sofia:
+- Version: 0x76(0x52,0x54,0x70,0x74,0x73)
+- SYS: 0x73(0x16,0x01,0x04,0x0b)
+- Media: 0x6d(0x05,0x00,0x04,0x10,0x20)
+- Sub: 0x69(0x20,0x21)
+- Audio: 0x50(0x02) → raw=0x80000
+
+Bug encontrado: los ioctls _IOW pasan buffers al kernel para DMA.
+Si se hace free() o return 0 normal, el runtime de libc intenta
+limpiar y da SEGV. Solución: _exit(0) + heap buffers (no stack).
+
+Próximo: VI init (0x59) + VENC init (0x65) con buffers mmap para DMA.
