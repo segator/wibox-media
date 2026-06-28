@@ -1,0 +1,89 @@
+# WiBox Custom Firmware Builder
+
+Build custom firmware for the Fermax WiBox (GK710x SoC) intercom.
+
+## Prerequisites
+
+- **Factory `mtd4` backup** — copy it as `mtd4` in this directory.  
+  This file contains `/usr/` (cramfs): Sofia binary, web UI, WiFi binaries, etc.  
+  The build extracts it, applies our patches, and repacks it.
+- **Docker** — to build the toolchain and firmware in a reproducible environment.
+
+## Build
+
+### Step 1 — Build Docker build-tool (one-time)
+
+```bash
+make docker
+```
+
+This compiles `cramfs-tools` statically against zlib 1.2.8 (Ubuntu 16.04), ensuring the
+cramfs output is compatible with the GK710x kernel (3.4).
+
+### Step 2 — Build firmware image
+
+```bash
+make build
+```
+
+This runs inside Docker:
+1. Extracts factory `mtd4` → `cramfs/`
+2. Applies patch scripts (dropbear, mosquitto, GPIO, custom run.sh, etc.)
+3. Packs everything back into a cramfs image
+
+Output: `release/image-YYMMDD-HHMM` (~4.8 MB, must fit within the 11 MB mtd4 partition).
+
+## What's inside the firmware
+
+| Component | Description |
+|-----------|-------------|
+| **run.sh** | Custom boot script: GPIO setup, WiFi, SSH (dropbear), Sofia launch |
+| **sofia_trace** | Ptrace wrapper — catches SEGVs + logs all ioctls to `/mnt/mtd/iotrace_boot.log` |
+| **dropbear** | SSH server for remote access |
+| **mosquitto** | MQTT clients for Home Assistant integration |
+| **gpio.sh, listener.sh, heartbeat.sh** | WiBox service scripts |
+
+## Flash to WiBox
+
+### Normal flash (WiFi/SSH working)
+
+```bash
+# Upload image to WiBox
+nc -lvp 8888 < release/latest      # on your PC
+nc 192.168.1.100 8888 > /tmp/fw.img  # on WiBox
+
+# Flash mtd4
+dd if=/tmp/fw.img of=/dev/mtdblock4
+reboot
+```
+
+### Recovery flash (U-Boot via serial YMODEM)
+
+```
+mw.b 0xC1000000 ff 00b10000
+sf probe
+loady 0xC1000000
+# → send release/latest via YMODEM from your terminal
+sf erase 0x00460000 00b10000
+sf write 0xC1000000 0x00460000 00b10000
+reset
+```
+
+## Sofia IOCTL Tracing
+
+Sofia runs under `sofia_trace` which:
+- Catches SEGV crashes (skips faulting instruction, Sofia stays alive)
+- Logs **every ioctl** call (fd, cmd, arg, return value) to `/mnt/mtd/iotrace_boot.log`
+
+To capture a trace:
+1. Flash firmware → boot → Sofia auto-starts under tracer
+2. From the app, start/stop video call to capture VI+VENC streaming ioctls
+3. Download trace: `nc` or `scp` from `/mnt/mtd/iotrace_boot.log`
+
+## Clean build artifacts
+
+```bash
+make clean
+```
+
+Removes extracted cramfs, patch.log, and compiled host binaries.
