@@ -33,3 +33,14 @@ Si se hace free() o return 0 normal, el runtime de libc intenta
 limpiar y da SEGV. Solución: _exit(0) + heap buffers (no stack).
 
 Próximo: VI init (0x59) + VENC init (0x65) con buffers mmap para DMA.
+
+## 2026-06-28 — Investigación VI/VENC
+
+Sofia solo abre /dev/gk_video UNA vez (fd 8 en el proceso principal).
+Los fds para VI (13, 17) y VENC child encoding son de THREADS hijos.
+El orden de init es: GK queries → SYS → media → VENC channels → VI open → VI init → VI start.
+
+Los ioctls VI (0x59) no funcionan en un simple segundo open() de gk_video
+sin haber completado antes el init de GK + VENC.
+
+Próximo: implementar la secuencia completa de init con el orden correcto.
