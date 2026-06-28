@@ -19,7 +19,6 @@ static FILE *logf;
 static int segv_count;
 static long nsyscalls;
 
-/* per-thread state */
 static pid_t traced_pids[MAX_TRACED];
 static int    traced_in_syscall[MAX_TRACED];
 static int    traced_prev_sysnr[MAX_TRACED];
@@ -44,11 +43,42 @@ static void log_msg(const char *fmt, ...) {
 	fflush(logf);
 }
 
+/* Dump ioctl buffer data using PTRACE_PEEKDATA — WRITE ioctls only */
+static void dump_ioctl_buf(pid_t child, unsigned long cmd, unsigned long arg) {
+	/* Only dump WRITE or READ|WRITE ioctls */
+	int dir = (cmd >> 30) & 3;
+	if (dir == 2) return; /* _IOC_READ — data uninit at entry */
+	if (dir == 0) return; /* _IO — no data */
+
+	int size = (cmd >> 16) & 0x3FFF;
+	if (size == 0 || size > 4096) return;
+	if (arg == 0) return;
+
+	unsigned long addr = arg;
+	unsigned long word;
+	int i, nwords = (size + 3) / 4;
+	int max_dump = nwords < 64 ? nwords : 64;
+
+	log_msg("  [");
+	for (i = 0; i < max_dump; i++) {
+		errno = 0;
+		word = ptrace(PTRACE_PEEKDATA, child, (void*)(addr + i*4), NULL);
+		if (errno) {
+			if (i == 0) { log_msg(" ??] (%d bytes)\n", size); return; }
+			break;
+		}
+		log_msg(" %08lx", word);
+		if ((i+1) % 8 == 0 && i+1 < max_dump) log_msg("\n   ");
+	}
+	if (nwords > max_dump) log_msg(" ...");
+	log_msg(" ] (%d bytes)\n", size);
+}
+
 int main(int argc, char *argv[]) {
 	if (argc < 2) { fprintf(stderr, "Usage: %s <program> [args...]\n", argv[0]); return 1; }
 	logf = fopen(LOG_PATH, "w");
 	if (!logf) { perror(LOG_PATH); logf = stderr; }
-	log_msg("=== sofia_trace v2: multi-thread ioctl tracer ===\n");
+	log_msg("=== sofia_trace v4: ioctl buffer dumper ===\n");
 
 	pid_t main_child = fork();
 	if (main_child == 0) {
@@ -61,7 +91,6 @@ int main(int argc, char *argv[]) {
 	pid_t child;
 	segv_count = 0; nsyscalls = 0; ntraced = 0;
 
-	/* Wait for initial exec stop */
 	waitpid(main_child, &status, 0);
 	if (!WIFSTOPPED(status)) {
 		log_msg("[tracer] child died before first stop\n");
@@ -70,7 +99,7 @@ int main(int argc, char *argv[]) {
 	ptrace(PTRACE_SETOPTIONS, main_child, NULL,
 		PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
 	add_slot(main_child);
-	log_msg("[tracer] main PID=%d, tracing threads...\n", main_child);
+	log_msg("[tracer] main PID=%d\n", main_child);
 	struct pt_regs regs;
 	ptrace(PTRACE_GETREGS, main_child, NULL, &regs);
 	log_msg("[tracer] initial PC=0x%08lx\n", regs.ARM_pc);
@@ -99,18 +128,16 @@ int main(int argc, char *argv[]) {
 		int event = status >> 16;
 		int slot = find_slot(child);
 
-		/* New thread/process */
 		if (event == PTRACE_EVENT_CLONE || event == PTRACE_EVENT_FORK || event == PTRACE_EVENT_VFORK) {
 			unsigned long newpid;
 			ptrace(PTRACE_GETEVENTMSG, child, NULL, &newpid);
 			if (add_slot((pid_t)newpid) >= 0) {
-				log_msg("[tracer] new child PID=%lu\n", newpid);
+				log_msg("[tracer] new PID=%lu\n", newpid);
 			}
 			ptrace(PTRACE_SYSCALL, child, NULL, 0);
 			continue;
 		}
 		if (slot < 0) {
-			/* Untraced child (shouldn't happen) */
 			ptrace(PTRACE_SYSCALL, child, NULL, sig == SIGTRAP ? 0 : sig);
 			continue;
 		}
@@ -128,9 +155,18 @@ int main(int argc, char *argv[]) {
 				traced_prev_sysnr[slot] = nr;
 				traced_in_syscall[slot] = 1;
 				if (nr == 54) {
+					unsigned long cmd = regs.ARM_r1;
+					unsigned long arg = regs.ARM_r2;
+					/* Skip TCGETS noise */
+					if (cmd == 0x5401) {
+						traced_in_syscall[slot] = 0;
+						ptrace(PTRACE_SYSCALL, child, NULL, 0);
+						continue;
+					}
 					nsyscalls++;
-					log_msg("[%d] IOC #%ld fd=%d cmd=0x%08lx arg=0x%08lx",
-						child, nsyscalls, (int)regs.ARM_r0, regs.ARM_r1, regs.ARM_r2);
+					log_msg("[%d] IOC #%ld fd=%d cmd=0x%08lx arg=0x%08lx\n",
+						child, nsyscalls, (int)regs.ARM_r0, cmd, arg);
+					dump_ioctl_buf(child, cmd, arg);
 				}
 			}
 			ptrace(PTRACE_SYSCALL, child, NULL, 0);
@@ -148,7 +184,6 @@ int main(int argc, char *argv[]) {
 			}
 			ptrace(PTRACE_SYSCALL, child, NULL, 0);
 		} else {
-			/* Forward other signals */
 			ptrace(PTRACE_SYSCALL, child, NULL, sig);
 		}
 	}

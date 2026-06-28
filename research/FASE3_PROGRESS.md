@@ -59,3 +59,18 @@ Opciones para resolver:
 La opción más rápida: usar nuestro sofia_trace modificado para dumpear
 los primeros N bytes del buffer en cada ioctl _IOW. Así obtenemos
 los valores exactos que Sofia usa.
+
+## 2026-06-28 — Tracer v4 con buffer dumper
+
+Añadido dump de buffers ioctl con PTRACE_PEEKDATA:
+- Solo dumpea _IOW (WRITE) y _IOWR (READ|WRITE)
+- Extrae el tamaño del comando: size = (cmd >> 16) & 0x3FFF
+- Cap de 256 bytes por dump para no saturar
+
+Bug corregido: el direction check estaba al revés (skip WRITE en vez de READ)
+
+Para extraer datos de VENC/VI:
+1. Recuperar WiBox vía serial
+2. Arrancar con tracer v4 
+3. Esperar a que Sofia termine init de boot
+4. El tracer captura los structs de VENC (0x65) y VI (0x59)
