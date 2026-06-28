@@ -44,3 +44,18 @@ Los ioctls VI (0x59) no funcionan en un simple segundo open() de gk_video
 sin haber completado antes el init de GK + VENC.
 
 Próximo: implementar la secuencia completa de init con el orden correcto.
+
+## 2026-06-28 — Bloqueo en VENC/VI
+
+VENC channel init (0x65,0x28) bloquea porque los structs necesitan
+valores válidos (resolución, codec, bitrate, GOP, etc.). No podemos
+pasar buffers con ceros — el driver del kernel se bloquea.
+
+Opciones para resolver:
+1. Linkar contra libadi.a del SDK (necesita adi_types.h + adi_sys.h que faltan)
+2. Dumpear memoria de Sofia para leer los structs que pasa a ioctls
+3. Extraer struct layouts del binario de Sofia con ingeniería inversa
+
+La opción más rápida: usar nuestro sofia_trace modificado para dumpear
+los primeros N bytes del buffer en cada ioctl _IOW. Así obtenemos
+los valores exactos que Sofia usa.
