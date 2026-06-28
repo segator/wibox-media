@@ -166,7 +166,12 @@ int main(int argc, char *argv[]) {
 					nsyscalls++;
 					log_msg("[%d] IOC #%ld fd=%d cmd=0x%08lx arg=0x%08lx\n",
 						child, nsyscalls, (int)regs.ARM_r0, cmd, arg);
-					dump_ioctl_buf(child, cmd, arg);
+					/* Only dump buffers for GK ioctl types */
+					int ctype = (cmd >> 8) & 0xFF;
+					if (ctype == 0x59 || ctype == 0x65 || ctype == 0x73 ||
+					    ctype == 0x6d || ctype == 0x69 || ctype == 0x6f ||
+					    ctype == 0x76 || ctype == 0x50 || ctype == 0x70)
+						dump_ioctl_buf(child, cmd, arg);
 				}
 			}
 			ptrace(PTRACE_SYSCALL, child, NULL, 0);

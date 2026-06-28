@@ -74,3 +74,15 @@ Para extraer datos de VENC/VI:
 2. Arrancar con tracer v4 
 3. Esperar a que Sofia termine init de boot
 4. El tracer captura los structs de VENC (0x65) y VI (0x59)
+
+## 2026-06-28 — Buffer dumps funcionando (7367 líneas, 221KB)
+
+Datos extraídos de ioctls WRITE:
+- VI 0x00: 0x00001f40 (8000) — buffer size or width
+- VI 0x32: 0x71790000, 0x71788000 (canales diferentes) 
+- VENC 0x33/0x28/0x38: enteros 1,2,3 (channel IDs)
+- La config real de structs (resolución, codec, bitrate) se hace
+  antes vía funciones de setup del SDK, no como ioctls individuales
+
+El enfoque de replicación necesita entender el setup inicial del
+GADI SDK (gadi_venc_set_channels_params y equivalentes).
