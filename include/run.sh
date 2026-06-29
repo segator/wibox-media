@@ -132,10 +132,6 @@ echo "IDS7938${UDID:8:4}" > /proc/sys/kernel/hostname
 if [ ! -f "/mnt/mtd/sip_media.conf" ] && [ -f "/etc/sip_media.conf.default" ]; then
   cp /etc/sip_media.conf.default /mnt/mtd/sip_media.conf
 fi
-if [ ! -f "/mnt/mtd/audio.conf" ] && [ -f "/etc/audio.conf.default" ]; then
-  cp /etc/audio.conf.default /mnt/mtd/audio.conf
-fi
-
 if [ -x "/usr/bin/wibox-media-daemon" ]; then
   /usr/bin/app_watchdog.sh wibox-media-daemon /usr/bin/wibox-media-daemon &
 elif [ -x "/usr/bin/sip_media" ]; then

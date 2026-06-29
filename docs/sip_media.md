@@ -8,9 +8,9 @@ the one-time Sofia boot warmup.
 - `src/sip_media/`: current source directory for `wibox-media-daemon`, the
   SIP/RTP media app. It still uses the historical directory name during the
   migration.
-- `src/sip_media/audio_worker.c`: in-daemon wrapper around the working
-  `src/audio_bridge/` GADI audio hardware bridge. It currently runs in a
-  daemon-owned child process and keeps the existing named-pipe frame interface.
+- `src/sip_media/audio_hw.c`: direct GADI audio hardware module. SIP RTP
+  threads read A-law frames from AI and send remote RTP payloads to AO without
+  named pipes.
 - `src/sip_media/video_worker.c`: in-daemon D1 H.264 RTP worker. It embeds the
   verified `src/video_rtp_bridge/` capture path and runs in a per-call child
   process for GADI/ioctl crash containment.
@@ -22,8 +22,8 @@ the one-time Sofia boot warmup.
 Runtime processes:
 
 ```text
-wibox-media-daemon  ->  forks in-daemon audio worker at boot
-audio worker        <-> /tmp/audio_from_intercom, /tmp/audio_to_intercom <-> RTP audio PCMA/8000
+wibox-media-daemon  <-> GADI AI/AO audio hardware
+wibox-media-daemon  <-> RTP audio PCMA/8000 on port 8000
 wibox-media-daemon  ->  forks in-daemon video worker when SDP has a remote video port
 video worker        -> RTP H.264/90000 on port 8002
 ```
@@ -32,8 +32,7 @@ video worker        -> RTP H.264/90000 on port 8002
 
 1. Sofia warms up the video hardware once after boot.
 2. Sofia exits.
-3. `wibox-media-daemon` runs under `app_watchdog.sh` and starts its embedded
-   audio worker.
+3. `wibox-media-daemon` runs under `app_watchdog.sh`.
 4. Doorbell `ALARM_REPORT` is read directly from `/dev/ttySGK1` by
    `wibox-media-daemon`. The legacy `/tmp/pipe_sip` `DING` trigger remains for
    manual testing.
@@ -42,7 +41,7 @@ video worker        -> RTP H.264/90000 on port 8002
    - `m=video ... RTP/AVP 96`
 6. When the call is established:
    - `wibox-media-daemon` sends `START_CALL` to `/dev/ttySGK1`;
-   - audio threads start PCMA RTP;
+   - audio threads start direct GADI AI/AO plus PCMA RTP;
    - the in-daemon video worker starts D1 capture and sends H.264 RTP.
 7. On hangup:
    - `wibox-media-daemon` stops the video worker child;
@@ -58,8 +57,8 @@ make build
 
 The in-daemon video worker links `libadi.a`; `SDK_DIR` defaults to
 `$HOME/config/GK710X_LinuxSDK_v2.0.0`.
-The embedded audio worker needs `libap.so`, which is copied from `SDK_DIR` into
-the firmware libraries. `make build` runs `make build-media` before packing the
+The direct audio path needs `libap.so`, which is copied from `SDK_DIR` into the
+firmware libraries. `make build` runs `make build-media` before packing the
 cramfs image.
 
 ## Configuration
@@ -76,6 +75,8 @@ video_rtp_port=8002
 video_payload_type=96
 serial_listener_enabled=1
 intercom_device=/dev/ttySGK1
+audio_buffer_size=160
+audio_chip_gpio=18
 mqtt_enabled=1
 mqtt_host=127.0.0.1
 mqtt_user=
@@ -93,6 +94,7 @@ mqtt_device_name=
 ```sh
 echo DING > /tmp/pipe_sip
 echo 'UART FB 11 00 1C' > /tmp/pipe_sip
+echo 'AUDIO_TEST 192.168.0.183 4012 5' > /tmp/pipe_sip
 echo 'VIDEO_TEST 192.168.0.183 4014 5' > /tmp/pipe_sip
 ```
 
@@ -102,10 +104,12 @@ frame into the same handler used by `/dev/ttySGK1`, useful for testing
 button.
 `VIDEO_TEST` starts the panel call context, runs the embedded D1 video worker
 for a bounded local test, and then stops the panel context.
+`AUDIO_TEST` starts the panel call context, starts direct GADI audio RTP for a
+bounded local test, and then stops audio and the panel context.
 
 ## Verification Done
 
-- `wibox-media-daemon` compiles with embedded audio and video workers.
+- `wibox-media-daemon` compiles with direct GADI audio and embedded video.
 - Firmware image builds with all binaries and runtime libraries.
 - Real MicroSIP call verified with audio and H.264 video.
 - Real MicroSIP call verified the in-daemon video worker: `stream_id == 0`
@@ -119,8 +123,9 @@ for a bounded local test, and then stops the panel context.
   - Control FIFO can inject UART frames for local testing.
   - MQTT fake-client test publishes Home Assistant discovery and handles
     `video/enabled/set`.
-  - Embedded audio worker starts, creates audio pipes, activates GADI on client
-    read, captures A-law frames, and stops audio cleanly.
+  - `AUDIO_TEST` starts GADI/AEC directly, sends RTP audio packets, and stops
+    audio cleanly without creating `/tmp/audio_from_intercom` or
+    `/tmp/audio_to_intercom`.
   - `VIDEO_TEST` starts the embedded worker and captures D1 `stream_id == 0`.
 
 ## Still To Verify
@@ -131,4 +136,4 @@ for a bounded local test, and then stops the panel context.
 - Long-call stability and cleanup around the 90s MCU auto-stop behavior.
 - Daylight video quality; low light adds analog sensor/CVBS noise that bitrate
   cannot remove.
-- Replacing the temporary named-pipe audio handoff with an in-process queue.
+- Real MicroSIP call on the direct GADI audio build.

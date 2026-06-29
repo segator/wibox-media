@@ -13,9 +13,7 @@ video_enabled=1
 video_rtp_port=8002
 video_payload_type=96
 
-# Named Pipes Configuration
-audio_ai_pipe=/tmp/audio_from_intercom
-audio_ao_pipe=/tmp/audio_to_intercom
+# Local Control Pipe
 sip_listen_pipe=/tmp/pipe_sip
 
 # Message Configuration
@@ -39,5 +37,4 @@ mqtt_sub_path=/usr/bin/mosquitto_sub
 
 # Audio Configuration
 audio_buffer_size=160
-pipe_retry_interval_ms=2000
-pipe_retry_max_attempts=0
+audio_chip_gpio=18

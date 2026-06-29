@@ -14,10 +14,7 @@ typedef struct {
     char video_bridge_path[256];
 
     // Pipe Configuration
-    char audio_ai_pipe[256];
-    char audio_ao_pipe[256];
     char sip_listen_pipe[256];
-    char audio_bridge_pipe[256];
 
     // Message Configuration
     char ding_message[32];
@@ -40,8 +37,7 @@ typedef struct {
 
     // Audio Configuration
     int audio_buffer_size;
-    int pipe_retry_interval_ms;
-    int pipe_retry_max_attempts;
+    int audio_chip_gpio;
 } wibox_config_t;
 
 /**

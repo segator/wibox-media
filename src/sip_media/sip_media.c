@@ -22,7 +22,7 @@
 #include "intercom.h"        // Our communication with the intercom
 #include "config.h"          // Configuration management
 #include "mqtt.h"            // MQTT/Home Assistant integration
-#include "audio_worker.h"    // In-daemon audio hardware worker
+#include "audio_hw.h"        // Direct GADI audio hardware access
 #include "video_worker.h"    // In-daemon D1 H.264 RTP worker
 
 #define THIS_FILE "wibox-media-daemon"
@@ -50,18 +50,10 @@ static pj_bool_t quit_flag = PJ_FALSE; // Application shutdown flag
 static int rtp_socket = -1;           // UDP socket for audio (RTP)
 static pj_thread_t *audio_input_thread;   // Thread handle for AI -> RTP
 static pj_thread_t *audio_output_thread;  // Thread handle for RTP -> AO
-static pid_t audio_worker_pid = -1;
 static pid_t video_bridge_pid = -1;
 static pj_bool_t call_active = PJ_FALSE; // Is there an active audio session?
 static pj_mutex_t *call_active_mutex; // Mutex to protect call_active
-static pj_mutex_t *audio_fds_mutex; // Mutex to protect audio FDs
 static struct sockaddr_in remote_rtp_addr; // Where to send audio packets
-static int audio_ai_fd = -1;    // Read microphone data
-static int audio_ao_fd = -1;    // Write speaker data
-static time_t last_ai_pipe_retry = 0;
-static time_t last_ao_pipe_retry = 0;
-static int ai_pipe_retry_count = 0;
-static int ao_pipe_retry_count = 0;
 static int current_dtmf_payload_type = RTP_PAYLOAD_DTMF;
 
 // Configuration
@@ -90,18 +82,13 @@ static void* audio_handler(void* arg);
 static int setup_rtp_socket(void);
 static void start_audio_session(const char* remote_ip, int remote_port);
 static void stop_audio_session(void);
-static int start_audio_worker(void);
-static void stop_audio_worker(void);
-static pj_bool_t open_audio_pipes(void);
-static void close_audio_pipes(void);
-static pj_bool_t is_pipe_error_recoverable(int error);
-static void handle_pipe_failure(void);
 static void generate_error_audio(unsigned char* buffer, int size);
 static void* ding_monitor_thread_func(void* arg);
 static int start_ding_monitoring(void);
 static void stop_ding_monitoring(void);
 static void handle_ding_trigger(const char* source);
 static void handle_uart_frame(const unsigned char frame[4]);
+static void handle_audio_test_control(const char* message);
 static void handle_video_test_control(const char* message);
 static void* serial_monitor_thread_func(void* arg);
 static int start_serial_monitoring(void);
@@ -117,12 +104,6 @@ static void send_nat_keepalive(void);
 // Thread-safe call_active access functions
 static pj_bool_t get_call_active_status(void);
 static void set_call_active_status(pj_bool_t active);
-
-// Thread-safe audio FD access functions
-static int get_audio_ai_fd(void);
-static void set_audio_ai_fd(int fd);
-static int get_audio_ao_fd(void);
-static void set_audio_ao_fd(int fd);
 
 // Unified SIP calling callbacks
 static void on_call_state_change(sip_call_state_t old_state, sip_call_state_t new_state, void* user_data);
@@ -164,35 +145,6 @@ static void set_call_active_status(pj_bool_t active) {
     pj_mutex_lock(call_active_mutex);
     call_active = active;
     pj_mutex_unlock(call_active_mutex);
-}
-
-// Thread-safe audio FD access functions
-static int get_audio_ai_fd(void) {
-    int fd;
-    pj_mutex_lock(audio_fds_mutex);
-    fd = audio_ai_fd;
-    pj_mutex_unlock(audio_fds_mutex);
-    return fd;
-}
-
-static void set_audio_ai_fd(int fd) {
-    pj_mutex_lock(audio_fds_mutex);
-    audio_ai_fd = fd;
-    pj_mutex_unlock(audio_fds_mutex);
-}
-
-static int get_audio_ao_fd(void) {
-    int fd;
-    pj_mutex_lock(audio_fds_mutex);
-    fd = audio_ao_fd;
-    pj_mutex_unlock(audio_fds_mutex);
-    return fd;
-}
-
-static void set_audio_ao_fd(int fd) {
-    pj_mutex_lock(audio_fds_mutex);
-    audio_ao_fd = fd;
-    pj_mutex_unlock(audio_fds_mutex);
 }
 
 static void get_local_ip(char* ip_str, size_t len) {
@@ -565,58 +517,6 @@ static void on_audio_ready(const char* remote_ip, int remote_rtp_port,
     start_video_session(remote_ip, remote_video_rtp_port);
 }
 
-static int start_audio_worker(void) {
-    if (audio_worker_pid > 0) {
-        printf("Audio worker already running pid=%d\n", audio_worker_pid);
-        return 0;
-    }
-
-    audio_worker_pid = fork();
-    if (audio_worker_pid < 0) {
-        printf("Failed to fork audio worker: %s\n", strerror(errno));
-        audio_worker_pid = -1;
-        return -1;
-    }
-
-    if (audio_worker_pid == 0) {
-        int log_fd = open("/tmp/wibox-audio-worker.log",
-                          O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (log_fd >= 0) {
-            dup2(log_fd, STDOUT_FILENO);
-            dup2(log_fd, STDERR_FILENO);
-            close(log_fd);
-        }
-        _exit(audio_worker_run());
-    }
-
-    printf("Started in-daemon audio worker pid=%d\n", audio_worker_pid);
-    return 0;
-}
-
-static void stop_audio_worker(void) {
-    int status;
-    int i;
-
-    if (audio_worker_pid <= 0) {
-        return;
-    }
-
-    printf("Stopping audio worker pid=%d\n", audio_worker_pid);
-    kill(audio_worker_pid, SIGTERM);
-    for (i = 0; i < 20; i++) {
-        pid_t r = waitpid(audio_worker_pid, &status, WNOHANG);
-        if (r == audio_worker_pid) {
-            audio_worker_pid = -1;
-            return;
-        }
-        usleep(100000);
-    }
-
-    kill(audio_worker_pid, SIGKILL);
-    waitpid(audio_worker_pid, &status, 0);
-    audio_worker_pid = -1;
-}
-
 static void start_video_session(const char* remote_ip, int remote_video_port) {
     const sip_call_session_t *session;
     int payload_type;
@@ -719,6 +619,33 @@ static void mqtt_set_video_enabled_callback(int enabled, void* user_data) {
     app_config.video_enabled = enabled ? 1 : 0;
     printf("MQTT video_enabled set to %d\n", app_config.video_enabled);
     mqtt_publish_video_enabled(app_config.video_enabled);
+}
+
+static void handle_audio_test_control(const char* message) {
+    char ip[64];
+    int port;
+    int seconds;
+
+    if (sscanf(message, "%63s %d %d", ip, &port, &seconds) != 3 ||
+        port <= 0 || seconds <= 0 || seconds > 30) {
+        PJ_LOG(2,(THIS_FILE, "Invalid AUDIO_TEST command: '%s'", message));
+        return;
+    }
+
+    if (get_call_active_status()) {
+        PJ_LOG(2,(THIS_FILE, "AUDIO_TEST ignored - audio session already active"));
+        return;
+    }
+
+    PJ_LOG(3,(THIS_FILE, "AUDIO_TEST starting to %s:%d for %d seconds",
+              ip, port, seconds));
+    intercom_send_command(INTERCOM_CMD_START_CALL);
+    usleep(500000);
+    start_audio_session(ip, port);
+    sleep((unsigned)seconds);
+    stop_audio_session();
+    intercom_send_command(INTERCOM_CMD_STOP_CALL);
+    PJ_LOG(3,(THIS_FILE, "AUDIO_TEST complete"));
 }
 
 static void handle_video_test_control(const char* message) {
@@ -833,6 +760,11 @@ static void handle_control_message(const char* message) {
 
     if (strncmp(message, "VIDEO_TEST ", 11) == 0) {
         handle_video_test_control(message + 11);
+        return;
+    }
+
+    if (strncmp(message, "AUDIO_TEST ", 11) == 0) {
+        handle_audio_test_control(message + 11);
         return;
     }
 
@@ -1191,117 +1123,6 @@ static void generate_error_audio(unsigned char* buffer, int size) {
     }
 }
 
-static pj_bool_t should_retry_pipe(time_t* last_retry, int* retry_count) {
-    time_t now = time(NULL);
-    if (now - *last_retry >= (app_config.pipe_retry_interval_ms / 1000)) {
-        *last_retry = now;
-        if (app_config.pipe_retry_max_attempts == 0 || *retry_count < app_config.pipe_retry_max_attempts) {
-            (*retry_count)++;
-            return PJ_TRUE;
-        }
-    }
-    return PJ_FALSE;
-}
-
-static pj_bool_t try_recover_ai_pipe(void) {
-    if (get_audio_ai_fd() >= 0) return PJ_TRUE;  // Already open
-
-    if (!should_retry_pipe(&last_ai_pipe_retry, &ai_pipe_retry_count)) {
-        return PJ_FALSE;
-    }
-
-    int fd = open(app_config.audio_ai_pipe, O_RDONLY | O_NONBLOCK);
-    if (fd >= 0) {
-        set_audio_ai_fd(fd);
-        PJ_LOG(3,(THIS_FILE, "AI pipe recovered successfully after %d attempts", ai_pipe_retry_count));
-        ai_pipe_retry_count = 0;  // Reset counter on success
-        return PJ_TRUE;
-    } else {
-        // Only log every 10th attempt to avoid spam
-        if (ai_pipe_retry_count % 10 == 1) {
-            PJ_LOG(2,(THIS_FILE, "AI pipe recovery attempt %d failed: %s",
-                     ai_pipe_retry_count, strerror(errno)));
-        }
-        return PJ_FALSE;
-    }
-}
-
-static pj_bool_t try_recover_ao_pipe(void) {
-    if (get_audio_ao_fd() >= 0) return PJ_TRUE;  // Already open
-
-    if (!should_retry_pipe(&last_ao_pipe_retry, &ao_pipe_retry_count)) {
-        return PJ_FALSE;
-    }
-
-    // For write-only pipes, opening might block if no reader exists
-    // Use O_NONBLOCK to prevent blocking
-    int fd = open(app_config.audio_ao_pipe, O_WRONLY | O_NONBLOCK);
-    if (fd >= 0) {
-        set_audio_ao_fd(fd);
-        PJ_LOG(3,(THIS_FILE, "AO pipe recovered successfully after %d attempts", ao_pipe_retry_count));
-        ao_pipe_retry_count = 0;  // Reset counter on success
-        return PJ_TRUE;
-    } else {
-        // Only log every 10th attempt to avoid spam
-        if (ao_pipe_retry_count % 10 == 1) {
-            PJ_LOG(2,(THIS_FILE, "AO pipe recovery attempt %d failed: %s",
-                     ao_pipe_retry_count, strerror(errno)));
-        }
-        return PJ_FALSE;
-    }
-}
-
-// Open audio pipes
-static pj_bool_t open_audio_pipes(void) {
-    // Close existing pipes if open
-    close_audio_pipes();
-
-    // Open AI pipe (read microphone data)
-    audio_ai_fd = open(app_config.audio_ai_pipe, O_RDONLY | O_NONBLOCK);
-    if (audio_ai_fd < 0) {
-        PJ_LOG(2,(THIS_FILE, "Failed to open AI pipe %s: %s", app_config.audio_ai_pipe, strerror(errno)));
-        return PJ_FALSE;
-    }
-
-    // Open AO pipe (write speaker data)
-    audio_ao_fd = open(app_config.audio_ao_pipe, O_WRONLY | O_NONBLOCK);
-    if (audio_ao_fd < 0) {
-        PJ_LOG(2,(THIS_FILE, "Failed to open AO pipe %s: %s", app_config.audio_ao_pipe, strerror(errno)));
-        close(audio_ai_fd);
-        audio_ai_fd = -1;
-        return PJ_FALSE;
-    }
-
-    PJ_LOG(3,(THIS_FILE, "Audio pipes opened successfully"));
-    return PJ_TRUE;
-}
-
-// Close audio pipes
-static void close_audio_pipes(void) {
-    int fd = get_audio_ai_fd();
-    if (fd >= 0) {
-        close(fd);
-        set_audio_ai_fd(-1);
-    }
-    fd = get_audio_ao_fd();
-    if (fd >= 0) {
-        close(fd);
-        set_audio_ao_fd(-1);
-    }
-}
-
-// Check if error is recoverable
-static pj_bool_t is_pipe_error_recoverable(int error) {
-    return (error == EAGAIN || error == EWOULDBLOCK || error == EINTR ||
-            error == EPIPE || error == ENOENT || error == ENXIO);
-}
-
-// Handle unrecoverable pipe error
-static void handle_pipe_failure(void) {
-    PJ_LOG(1,(THIS_FILE, "Unrecoverable pipe error - terminating call"));
-    stop_audio_session();
-}
-
 // Signal handler for clean shutdown
 static void signal_handler(int sig) {
     PJ_LOG(3,(THIS_FILE, "Signal %d received, shutting down...", sig));
@@ -1360,6 +1181,8 @@ static void* audio_input_handler(void* arg) {
     int consecutive_errors = 0;
     const int MAX_CONSECUTIVE_ERRORS = 10;
     int rtp_send_failures = 0;
+    int packets_sent = 0;
+    int bytes_payload_sent = 0;
     time_t last_network_check = time(NULL);
 
     // Allocate buffers based on configuration
@@ -1374,76 +1197,20 @@ static void* audio_input_handler(void* arg) {
 
     PJ_LOG(3,(THIS_FILE, "Audio input thread started"));
 
-    // Try to open pipes - but continue even if they fail
-    if (get_audio_ai_fd() < 0) {
-        int fd = open(app_config.audio_ai_pipe, O_RDONLY | O_NONBLOCK);
-        if (fd < 0) {
-            PJ_LOG(2,(THIS_FILE, "Initial AI pipe open failed: %s - will retry during call", strerror(errno)));
-            // Initialize retry timing
-            last_ai_pipe_retry = time(NULL);
-            ai_pipe_retry_count = 0;
-        } else {
-            set_audio_ai_fd(fd);
-            PJ_LOG(3,(THIS_FILE, "Audio AI pipe opened successfully"));
-        }
-    }
-
     while (get_call_active_status() && !quit_flag) {
-        // Try to recover pipe if it's not available
-        if (get_audio_ai_fd() < 0) {
-            try_recover_ai_pipe();
-        }
-
-        // === AI → RTP (Microphone to network) ===
-        int ai_fd = get_audio_ai_fd();
-        if (ai_fd >= 0) {
-            // Normal pipe reading
-            bytes_read = read(ai_fd, audio_buffer, app_config.audio_buffer_size);
-
-            if (bytes_read > 0) {
-                consecutive_errors = 0;  // Reset error counter
-            } else if (bytes_read < 0) {
-                if (!is_pipe_error_recoverable(errno)) {
-                    consecutive_errors++;
-                    PJ_LOG(2,(THIS_FILE, "AI pipe read error: %s (count: %d)",
-                             strerror(errno), consecutive_errors));
-
-                    if (consecutive_errors >= MAX_CONSECUTIVE_ERRORS) {
-                        PJ_LOG(1,(THIS_FILE, "AI pipe failed - closing and will retry recovery"));
-                        close(ai_fd);
-                        set_audio_ai_fd(-1);
-
-                        // Reset retry timing for immediate retry attempt
-                        last_ai_pipe_retry = 0;
-                        ai_pipe_retry_count = 0;
-                    }
-                }
-                // Generate error audio for this packet
-                generate_error_audio(audio_buffer, app_config.audio_buffer_size);
-                bytes_read = app_config.audio_buffer_size;
-            } else {
-                // bytes_read == 0 means EOF
-                // Check if pipe file still exists
-                if (access(app_config.audio_ai_pipe, F_OK) == -1) {
-                    // Pipe file deleted - close and allow reopening
-                    PJ_LOG(2,(THIS_FILE, "AI pipe file deleted - closing to allow reopening"));
-                    close(ai_fd);
-                    set_audio_ai_fd(-1);
-                    last_ai_pipe_retry = 0;
-                    ai_pipe_retry_count = 0;
-                } else {
-                    // Pipe exists but no writers - keep open, just generate error audio
-                    // PJ_LOG(4,(THIS_FILE, "AI pipe EOF - no writers, keeping open"));
-                }
-                generate_error_audio(audio_buffer, app_config.audio_buffer_size);
-                bytes_read = app_config.audio_buffer_size;
-                consecutive_errors = 0;  // Reset since we're handling it gracefully
-            }
+        // === AI -> RTP (microphone to network) ===
+        bytes_read = audio_hw_get_frame(audio_buffer, app_config.audio_buffer_size);
+        if (bytes_read > 0) {
+            consecutive_errors = 0;
         } else {
-            // No AI pipe available - generate error audio
+            consecutive_errors++;
+            if (consecutive_errors >= MAX_CONSECUTIVE_ERRORS) {
+                PJ_LOG(1,(THIS_FILE, "Audio hardware input failed repeatedly"));
+                set_call_active_status(PJ_FALSE);
+                break;
+            }
             generate_error_audio(audio_buffer, app_config.audio_buffer_size);
             bytes_read = app_config.audio_buffer_size;
-            consecutive_errors = 0;  // Reset since we're handling it
         }
 
         // Always send RTP packet (either real audio or error pattern)
@@ -1484,6 +1251,8 @@ static void* audio_input_handler(void* arg) {
                 }
             }
         } else {
+            packets_sent++;
+            bytes_payload_sent += (int)bytes_read;
             // Successful send, reset failure counter
             if (rtp_send_failures > 0) {
                 rtp_send_failures = 0;
@@ -1492,19 +1261,14 @@ static void* audio_input_handler(void* arg) {
 
         seq_num++;
         timestamp += 160;
-        usleep(18000); // 18ms delay, just a bit faster than the other process is writing to pipe
-    }
-
-    int ai_fd = get_audio_ai_fd();
-    if (ai_fd >= 0) {
-        close(ai_fd);
-        set_audio_ai_fd(-1);
+        usleep(18000);
     }
 
     free(audio_buffer);
     free(rtp_packet);
 
-    PJ_LOG(3,(THIS_FILE, "Audio input thread stopped"));
+    PJ_LOG(3,(THIS_FILE, "Audio input thread stopped: packets=%d payload_bytes=%d",
+              packets_sent, bytes_payload_sent));
     return NULL;
 }
 
@@ -1513,6 +1277,8 @@ static void* audio_output_handler(void* arg) {
     unsigned char *rtp_packet;
     ssize_t bytes_read;
     int logged_packets = 0;
+    int packets_received = 0;
+    int payload_bytes_played = 0;
 
     // Allocate buffer based on configuration
     rtp_packet = malloc(app_config.audio_buffer_size + 12);
@@ -1523,26 +1289,7 @@ static void* audio_output_handler(void* arg) {
 
     PJ_LOG(3,(THIS_FILE, "Audio output thread started"));
 
-    // Initial pipe opening attempt
-    if (get_audio_ao_fd() < 0) {
-        int fd = open(app_config.audio_ao_pipe, O_WRONLY | O_NONBLOCK);
-        if (fd < 0) {
-            PJ_LOG(2,(THIS_FILE, "Initial AO pipe open failed: %s - will retry during call", strerror(errno)));
-            // Initialize retry timing
-            last_ao_pipe_retry = time(NULL);
-            ao_pipe_retry_count = 0;
-        } else {
-            set_audio_ao_fd(fd);
-            PJ_LOG(3,(THIS_FILE, "Audio AO pipe opened successfully"));
-        }
-    }
-
     while (get_call_active_status() && !quit_flag) {
-        // Try to recover pipe if it's not available
-        if (get_audio_ao_fd() < 0) {
-            try_recover_ao_pipe();
-        }
-
         // === RTP → AO (Network to speaker) ===
         struct sockaddr_in from_addr;
         socklen_t from_len = sizeof(from_addr);
@@ -1562,47 +1309,21 @@ static void* audio_output_handler(void* arg) {
                 continue;
             }
 
-            int ao_fd = get_audio_ao_fd();
-            if (ao_fd >= 0) {
-                // Try to write to speaker pipe
-                ssize_t bytes_written = write(ao_fd, rtp_packet + 12, bytes_read - 12);
-
-                if (bytes_written < 0) {
-                    // Any write error - close pipe to trigger recovery
-                    PJ_LOG(2,(THIS_FILE, "AO pipe write error: %s - closing to allow recovery", strerror(errno)));
-                    close(ao_fd);
-                    set_audio_ao_fd(-1);
-                    // Reset retry timing for immediate retry attempt
-                    last_ao_pipe_retry = 0;
-                    ao_pipe_retry_count = 0;
-                } else if (bytes_written == 0) {
-                    // Write returned 0 - might indicate pipe issues
-                    PJ_LOG(2,(THIS_FILE, "AO pipe write returned 0 - checking pipe status"));
-                    if (access(app_config.audio_ao_pipe, F_OK) == -1) {
-                        // Pipe file deleted
-                        PJ_LOG(2,(THIS_FILE, "AO pipe file deleted - closing to allow recovery"));
-                        close(ao_fd);
-                        set_audio_ao_fd(-1);
-                        last_ao_pipe_retry = 0;
-                        ao_pipe_retry_count = 0;
-                    }
-                }
+            if (audio_hw_send_frame(rtp_packet + 12, (size_t)(bytes_read - 12)) < 0) {
+                PJ_LOG(2,(THIS_FILE, "Audio hardware output send failed"));
+            } else {
+                packets_received++;
+                payload_bytes_played += (int)(bytes_read - 12);
             }
-            // If no AO pipe, just discard the audio (no logging to avoid spam)
         }
 
         usleep(1000); // 1ms polling for received packets - faster than input timing
     }
 
-    int ao_fd = get_audio_ao_fd();
-    if (ao_fd >= 0) {
-        close(ao_fd);
-        set_audio_ao_fd(-1);
-    }
-
     free(rtp_packet);
 
-    PJ_LOG(3,(THIS_FILE, "Audio output thread stopped"));
+    PJ_LOG(3,(THIS_FILE, "Audio output thread stopped: packets=%d payload_bytes=%d",
+              packets_received, payload_bytes_played));
     return NULL;
 }
 
@@ -1620,16 +1341,15 @@ static void start_audio_session(const char* remote_ip, int remote_port) {
     }
     PJ_LOG(3,(THIS_FILE, "Using DTMF RTP payload type %d", current_dtmf_payload_type));
 
-    // Reset pipe status and retry counters
-    last_ai_pipe_retry = 0;
-    last_ao_pipe_retry = 0;
-    ai_pipe_retry_count = 0;
-    ao_pipe_retry_count = 0;
-
     memset(&remote_rtp_addr, 0, sizeof(remote_rtp_addr));
     remote_rtp_addr.sin_family = AF_INET;
     remote_rtp_addr.sin_port = htons(remote_port);
     inet_pton(AF_INET, remote_ip, &remote_rtp_addr.sin_addr);
+
+    if (audio_hw_start(app_config.audio_chip_gpio, app_config.audio_buffer_size) < 0) {
+        PJ_LOG(1,(THIS_FILE, "Failed to start audio hardware"));
+        return;
+    }
 
     set_call_active_status(PJ_TRUE);
 
@@ -1640,6 +1360,7 @@ static void start_audio_session(const char* remote_ip, int remote_port) {
     if (status != PJ_SUCCESS) {
         PJ_LOG(1,(THIS_FILE, "Failed to create audio input thread: %d", status));
         set_call_active_status(PJ_FALSE);
+        audio_hw_stop();
         return;
     }
 
@@ -1654,6 +1375,7 @@ static void start_audio_session(const char* remote_ip, int remote_port) {
         // Clean up the input thread
         pj_thread_destroy(audio_input_thread);
         audio_input_thread = NULL;
+        audio_hw_stop();
         return;
     }
 
@@ -1686,7 +1408,7 @@ static void stop_audio_session(void) {
             audio_output_thread = NULL;
         }
 
-        close_audio_pipes();
+        audio_hw_stop();
     }
 }
 
@@ -1797,10 +1519,6 @@ int main(int argc, char *argv[]) {
         printf("Warning: Failed to initialize intercom module\n");
     }
 
-    if (start_audio_worker() < 0) {
-        printf("Warning: Failed to start audio worker\n");
-    }
-
     // Initialize PJLIB
     status = pj_init();
     if (status != PJ_SUCCESS) {
@@ -1821,16 +1539,6 @@ int main(int argc, char *argv[]) {
     status = pj_mutex_create_simple(pool, "call_active", &call_active_mutex);
     if (status != PJ_SUCCESS) {
         printf("Error creating call_active mutex: %d\n", status);
-        pj_pool_release(pool);
-        pj_caching_pool_destroy(&cp);
-        pj_shutdown();
-        return 1;
-    }
-
-    // Create mutex for audio FDs protection
-    status = pj_mutex_create_simple(pool, "audio_fds", &audio_fds_mutex);
-    if (status != PJ_SUCCESS) {
-        printf("Error creating audio_fds mutex: %d\n", status);
         pj_pool_release(pool);
         pj_caching_pool_destroy(&cp);
         pj_shutdown();
@@ -1934,7 +1642,6 @@ int main(int argc, char *argv[]) {
     stop_ding_monitoring();
     stop_video_session();
     stop_audio_session();
-    stop_audio_worker();
 
     // Terminate any active call
     sip_calling_terminate_call();

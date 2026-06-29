@@ -48,7 +48,7 @@ endif
 # source files
 ################################################################################
 
-SOURCES = sip_media.c sip_calling.c intercom.c config.c mqtt.c audio_worker.c video_worker.c
+SOURCES = sip_media.c sip_calling.c intercom.c config.c mqtt.c audio_hw.c video_worker.c
 
 ################################################################################
 # define user cc flags
@@ -123,11 +123,11 @@ endif
 OBJECTS = $(SOURCES:.c=.o)
 
 # Header dependencies
-sip_media.o: sip_media.c sip_calling.h intercom.h config.h mqtt.h
+sip_media.o: sip_media.c sip_calling.h intercom.h config.h mqtt.h audio_hw.h
 sip_calling.o: sip_calling.c sip_calling.h
 intercom.o: intercom.c intercom.h
 config.o: config.c config.h
-audio_worker.o: audio_worker.c audio_worker.h ../audio_bridge/audio_bridge.c ../audio_bridge/ap.c ../audio_bridge/config.c
+audio_hw.o: audio_hw.c audio_hw.h ../audio_bridge/ap.c
 mqtt.o: mqtt.c mqtt.h config.h
 video_worker.o: video_worker.c video_worker.h ../video_rtp_bridge/video_rtp_bridge.c
 

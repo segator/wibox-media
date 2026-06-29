@@ -39,10 +39,7 @@ void config_init_defaults(wibox_config_t* config) {
     config->video_bridge_path[0] = '\0';
 
     // Pipe Configuration
-    strcpy(config->audio_ai_pipe, "/tmp/audio_ai_to_sip");
-    strcpy(config->audio_ao_pipe, "/tmp/audio_sip_to_ao");
     strcpy(config->sip_listen_pipe, "/tmp/pipe_sip");
-    strcpy(config->audio_bridge_pipe, "/tmp/pipe_audio");
 
     // Message Configuration
     strcpy(config->ding_message, "DING");
@@ -65,8 +62,7 @@ void config_init_defaults(wibox_config_t* config) {
 
     // Audio Configuration
     config->audio_buffer_size = 160;
-    config->pipe_retry_interval_ms = 2000;
-    config->pipe_retry_max_attempts = 0;  // 0 = unlimited
+    config->audio_chip_gpio = 18;
 }
 
 static int parse_config_line(const char* line, wibox_config_t* config) {
@@ -123,17 +119,14 @@ static int parse_config_line(const char* line, wibox_config_t* config) {
         strncpy(config->video_bridge_path, value, sizeof(config->video_bridge_path) - 1);
         config->video_bridge_path[sizeof(config->video_bridge_path) - 1] = '\0';
     } else if (strcmp(key, "audio_ai_pipe") == 0) {
-        strncpy(config->audio_ai_pipe, value, sizeof(config->audio_ai_pipe) - 1);
-        config->audio_ai_pipe[sizeof(config->audio_ai_pipe) - 1] = '\0';
+        return 0; /* legacy named-pipe config, ignored */
     } else if (strcmp(key, "audio_ao_pipe") == 0) {
-        strncpy(config->audio_ao_pipe, value, sizeof(config->audio_ao_pipe) - 1);
-        config->audio_ao_pipe[sizeof(config->audio_ao_pipe) - 1] = '\0';
+        return 0; /* legacy named-pipe config, ignored */
     } else if (strcmp(key, "sip_listen_pipe") == 0) {
         strncpy(config->sip_listen_pipe, value, sizeof(config->sip_listen_pipe) - 1);
         config->sip_listen_pipe[sizeof(config->sip_listen_pipe) - 1] = '\0';
     } else if (strcmp(key, "audio_bridge_pipe") == 0) {
-        strncpy(config->audio_bridge_pipe, value, sizeof(config->audio_bridge_pipe) - 1);
-        config->audio_bridge_pipe[sizeof(config->audio_bridge_pipe) - 1] = '\0';
+        return 0; /* legacy named-pipe config, ignored */
     } else if (strcmp(key, "ding_message") == 0) {
         strncpy(config->ding_message, value, sizeof(config->ding_message) - 1);
         config->ding_message[sizeof(config->ding_message) - 1] = '\0';
@@ -173,10 +166,12 @@ static int parse_config_line(const char* line, wibox_config_t* config) {
         config->mqtt_sub_path[sizeof(config->mqtt_sub_path) - 1] = '\0';
     } else if (strcmp(key, "audio_buffer_size") == 0) {
         config->audio_buffer_size = atoi(value);
+    } else if (strcmp(key, "audio_chip_gpio") == 0) {
+        config->audio_chip_gpio = atoi(value);
     } else if (strcmp(key, "pipe_retry_interval_ms") == 0) {
-        config->pipe_retry_interval_ms = atoi(value);
+        return 0; /* legacy named-pipe config, ignored */
     } else if (strcmp(key, "pipe_retry_max_attempts") == 0) {
-        config->pipe_retry_max_attempts = atoi(value);
+        return 0; /* legacy named-pipe config, ignored */
     } else {
         printf("Unknown configuration key: %s\n", key);
         return -1;
@@ -244,10 +239,7 @@ void config_print(const wibox_config_t* config) {
     printf("video_rtp_port = %d\n", config->video_rtp_port);
     printf("video_payload_type = %d\n", config->video_payload_type);
     printf("video_bridge_path = %s\n", config->video_bridge_path);
-    printf("audio_ai_pipe = %s\n", config->audio_ai_pipe);
-    printf("audio_ao_pipe = %s\n", config->audio_ao_pipe);
     printf("sip_listen_pipe = %s\n", config->sip_listen_pipe);
-    printf("audio_bridge_pipe = %s\n", config->audio_bridge_pipe);
     printf("ding_message = %s\n", config->ding_message);
     printf("serial_listener_enabled = %d\n", config->serial_listener_enabled);
     printf("intercom_device = %s\n", config->intercom_device);
@@ -261,7 +253,6 @@ void config_print(const wibox_config_t* config) {
     printf("mqtt_pub_path = %s\n", config->mqtt_pub_path);
     printf("mqtt_sub_path = %s\n", config->mqtt_sub_path);
     printf("audio_buffer_size = %d\n", config->audio_buffer_size);
-    printf("pipe_retry_interval_ms = %d\n", config->pipe_retry_interval_ms);
-    printf("pipe_retry_max_attempts = %d\n", config->pipe_retry_max_attempts);
+    printf("audio_chip_gpio = %d\n", config->audio_chip_gpio);
     printf("============================\n");
 }

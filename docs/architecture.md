@@ -13,7 +13,7 @@ run.sh
   -> app_watchdog.sh wibox-media-daemon
 
 wibox-media-daemon
-  -> audio worker                  forked at daemon startup
+  - direct GADI AI/AO audio
   -> video worker                  forked per video call
 ```
 
@@ -29,13 +29,9 @@ Data flow:
 
 /tmp/pipe_sip --> wibox-media-daemon
 
-audio worker <--> /tmp/audio_from_intercom
-audio worker <--> /tmp/audio_to_intercom
-                              ^
-                              |
-                         wibox-media-daemon <--> SIP/RTP audio
-                              |
-                              +--> video worker <--> RTP H.264 video
+wibox-media-daemon <--> GADI AI/AO audio
+wibox-media-daemon <--> SIP/RTP audio
+wibox-media-daemon  --> video worker <--> RTP H.264 video
 
 wibox-media-daemon <--> MQTT/Home Assistant
 ```
@@ -274,32 +270,32 @@ Goal:
 - Own audio hardware and RTP timing from one event loop/thread model.
 
 Implementation:
-- Added `src/sip_media/audio_worker.c` as a daemon-linked wrapper around the
-  imported `src/audio_bridge/` GADI audio bridge.
-- `wibox-media-daemon` starts a daemon-owned audio worker child at boot, so the
-  firmware runtime no longer packages or starts `/usr/bin/audio_bridge`.
-- The existing named-pipe frame handoff remains temporarily:
-  `/tmp/audio_from_intercom` and `/tmp/audio_to_intercom`.
-- The fork boundary mirrors the video worker migration and keeps the known-good
-  GADI audio init/shutdown behavior isolated while the runtime is consolidated.
-- `libap.so` is now packaged for the daemon because the embedded audio worker
-  uses the imported AP/AEC path.
+- Added `src/sip_media/audio_hw.c` as a direct GADI audio hardware module.
+- `wibox-media-daemon` initializes GADI AI/AO and AP/AEC when an audio session
+  starts, then the existing RTP threads read AI frames and write AO frames
+  directly.
+- The firmware runtime no longer packages or starts `/usr/bin/audio_bridge`.
+- The named-pipe handoff was removed from the active audio path; legacy
+  `audio_ai_pipe`, `audio_ao_pipe`, `audio_bridge_pipe` and pipe retry config
+  keys are accepted but ignored for old `/mnt/mtd/sip_media.conf` files.
+- `libap.so` is now packaged for the daemon because direct audio uses the
+  imported AP/AEC path.
 
 Verification:
-- `make build-media` links `wibox-media-daemon` with the embedded audio worker
-  and `libap.so`; `include/bin/audio_bridge` is absent.
-- WiBox smoke test starts only `wibox-media-daemon` processes; there is no
+- `make build-media` links `wibox-media-daemon` with direct audio hardware
+  support and `libap.so`; `include/bin/audio_bridge` is absent.
+- WiBox smoke test starts only one `wibox-media-daemon` process; there is no
   `audio_bridge`, `video_rtp_bridge` or `listener.sh` runtime process.
-- Embedded audio worker creates the audio pipes, initializes GADI/AEC when a
-  client reads `/tmp/audio_from_intercom`, captures A-law frames, and shuts the
-  audio hardware down cleanly when the client disconnects.
+- No `/tmp/audio_from_intercom` or `/tmp/audio_to_intercom` files are created.
+- `AUDIO_TEST 192.168.0.183 4012 5` starts the panel context, initializes
+  GADI/AEC directly, sends 248 RTP audio packets / 39,680 payload bytes, then
+  disables the audio chip and stops cleanly.
 - `VIDEO_TEST 192.168.0.183 4014 8` still captures D1 `stream_id == 0` frames
-  after audio worker integration.
+  after direct audio integration.
 
 Remaining:
-- Replace the temporary named-pipe handoff with an in-process audio queue.
 - Re-run a real MicroSIP call to validate two-way audio, H.264 video and DTMF
-  together on the embedded audio build.
+  together on the direct audio build.
 
 ### Phase 6: Remove Web UI and Legacy Scripts
 
