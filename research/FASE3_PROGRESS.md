@@ -424,3 +424,29 @@ Needs fresh state each run — can't restart without reboot.
 - Main stream D1 capture: need to make 0x40047687 work
   OR extract the main stream before Sofia consumes it
   OR start our own encoder without Sofia
+
+## 2026-06-29 — Video plays! Mixed streams issue confirmed
+
+### Visual confirmation
+User reports: video shows higher resolution first (D1 688x576), then switches
+to lower resolution (CIF 352x288). This confirms:
+1. Video IS playable ✓
+2. Multiple streams are being captured together
+3. Main stream (stream 0, D1) produces bigger frames
+4. Sub-stream (stream 2, CIF) produces smaller frames
+5. get_stream(0xFF) captures ALL streams mixed
+
+### Solution for clean video
+Filter by stream_id in get_stream:
+- stream 0: main (688x576, D1)
+- stream 1: sub1 (352x288, CIF)
+- stream 2: sub2 (352x288, CIF)
+
+Capture only stream 0 for clean D1 video.
+But specific stream_id get_stream fails (returns errors).
+Only 0xFF (all streams) works.
+
+### Hypothesis
+The SDK's gadi_venc_get_stream has a bug with specific stream IDs.
+The 0xFF wildcard path works because it bypasses the stream matching logic.
+Next: fix stream ID filtering to get clean single-stream video.
