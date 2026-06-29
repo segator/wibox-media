@@ -86,3 +86,18 @@ Datos extraídos de ioctls WRITE:
 
 El enfoque de replicación necesita entender el setup inicial del
 GADI SDK (gadi_venc_set_channels_params y equivalentes).
+
+## 2026-06-29 — SDK GADI funciona (pan602389160/gk7102)
+
+Headers completas encontradas en gk7102_sdk/src/adi/include/:
+- adi_types.h, adi_sys.h, adi_venc.h, adi_vi.h, adi_vout.h, adi_audio.h
+
+PoC compila contra libadi.a y funciona en el WiBox:
+- gadi_sys_init() ✓
+- gadi_vi_init() + gadi_vi_open() ✓ 
+- gadi_vout_init() + gadi_vout_open() ✓
+- gadi_venc_init() + gadi_venc_open(vi, vo) ✓
+- SEGV en gadi_venc_set_channels_params/stream_format/h264_config
+
+No necesita Sofia — módulos kernel (media.ko, etc.) son suficientes.
+Firmware (gk_fw.bin) ya está en /lib/firmware/.
