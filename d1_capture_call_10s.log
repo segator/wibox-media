@@ -1,0 +1,212 @@
+=== D1 Capture v2 ===
+Output: /tmp/d1_capture_call_10s.h264
+
+[SDK] gadi_sys_init...
+GOKE ADI: R(10973) LIBC(uClibc) (gcc version 4.6.1 (crosstool-NG 1.18.0) ) 2016-11-16 10:00:45
+[SDK] sys_init: OK
+
+[SDK] vi_init + vi_open...
+[SDK] vi_init: OK
+[SDK] vi_open: OK handle=0x1c0d4d0
+
+[SDK] vout_init + vout_open...
+[SDK] vout: OK handle=0x1c0d548
+
+[SDK] venc_init + venc_open...
+[SDK] venc_init: OK
+[SDK] venc_open: OK handle=0x1c0d5b0 err=0
+
+[SDK] map_bsb...
+[SDK] map_bsb: OK
+
+[SDK] map_dsp: OK addr=0x76694000 length=7667712
+
+[RAW] Opening /dev/gk_video...
+[RAW] fd=5
+
+[VI_CAPS] ioctl(0x80047305) ret=0 errno=0
+[VI_CAPS] values: 0x000002b0 0x00000240 0x01388000 0x02080201 0x80046200 0x80040000 
+[INFO] chip_type=4
+
+[SYS_0x7B] ioctl(0x4004767b) ret=0 errno=0
+[RESET] Resetting encode state...
+[RESET_STATE] ioctl(0x40047654, 0) ret=0 errno=0
+[LIMITS] Setting resource limits...
+[GET_LIMITS] ioctl(0x80047674) ret=0 errno=0 bytes=b0 02 40 02
+[SET_LIMITS] ioctl(0x40047673) ret=0 errno=0 bytes=b0 02 40 02
+[CONFIG] SET_SRCBUF_FORMAT (40-byte struct variants)...
+[SET_SRCBUF_FORMAT] sofia_exact struct_size=40
+  bytes: 02b0 0240 0001 0160 012c 02b0 0240 0001
+[SET_SRCBUF_FORMAT] -> ret=0 errno=0 (Success)
+[SET_SRCBUF_FORMAT] selected variant: sofia_exact
+[CONFIG] SET_SRCBUF_TYPE...
+[CONFIG] SET_SRCBUF_TYPE ret=0
+
+[CONFIG] Streams 0/1/2 encode + H264 defaults...
+[SET_FRAME_INTERVAL:0] ret=0 errno=0
+[SET_ENCODE_FORMAT:0] ret=0 errno=0 ch=0 688x576 fps=25
+[H264:0] GET ret=0 errno=0
+[H264] before
+  0000: 01 00 00 00 00 00 04 00 00 00 00 00 01 00 00 00
+  0016: 4c 02 00 00 90 5f 01 00 b0 02 40 02 00 00 00 00
+  0032: 00 00 00 00 00 00 00 00 00 00 00 00 01 00 19 00
+  0048: 01 00 04 00 00 00 00 00 00 00 00 00 01 33 01 33
+  0064: 01 33 03 05 02 00 00 01 00 00 00 00 00 0a 14 32
+[H264:0] SET ret=0 errno=0 gop=1/25 idr=1 profile=0
+[H264] after
+  0000: 01 00 00 00 00 00 04 00 00 00 00 00 01 00 00 00
+  0016: 4c 02 00 00 90 5f 01 00 b0 02 40 02 00 00 00 00
+  0032: 00 00 00 00 00 00 00 00 00 00 00 00 01 00 19 00
+  0048: 01 00 04 00 00 00 00 00 00 00 00 00 01 33 01 33
+  0064: 01 33 03 05 02 00 00 01 00 00 00 00 00 0a 14 32
+[SET_BITRATE:0] ret=0 errno=0 cbr=262144 min=262144 max=524288
+[SET_FRAME_INTERVAL:1] ret=0 errno=0
+[SET_ENCODE_FORMAT:1] ret=0 errno=0 ch=1 352x300 fps=25
+[H264:1] GET ret=0 errno=0
+[H264] before
+  0000: 02 00 00 00 00 00 04 00 00 00 00 00 01 00 00 00
+  0016: 4c 02 00 00 90 5f 01 00 60 01 2c 01 00 00 00 00
+  0032: 00 00 00 00 00 00 00 00 00 00 00 00 01 00 19 00
+  0048: 01 00 04 00 00 00 00 00 00 00 00 00 01 33 01 33
+  0064: 01 33 03 05 02 00 00 01 00 00 00 00 00 0a 14 32
+[H264:1] SET ret=0 errno=0 gop=1/25 idr=1 profile=0
+[H264] after
+  0000: 02 00 00 00 00 00 04 00 00 00 00 00 01 00 00 00
+  0016: 4c 02 00 00 90 5f 01 00 60 01 2c 01 00 00 00 00
+  0032: 00 00 00 00 00 00 00 00 00 00 00 00 01 00 19 00
+  0048: 01 00 04 00 00 00 00 00 00 00 00 00 01 33 01 33
+  0064: 01 33 03 05 02 00 00 01 00 00 00 00 00 0a 14 32
+[SET_BITRATE:1] ret=0 errno=0 cbr=262144 min=262144 max=524288
+[SET_FRAME_INTERVAL:2] ret=0 errno=0
+[SET_ENCODE_FORMAT:2] ret=0 errno=0 ch=2 352x288 fps=25
+[H264:2] GET ret=0 errno=0
+[H264] before
+  0000: 04 00 00 00 00 00 04 00 00 00 00 00 01 00 00 00
+  0016: 4c 02 00 00 90 5f 01 00 60 01 20 01 00 00 00 00
+  0032: 00 00 00 00 00 00 00 00 00 00 00 00 01 00 19 00
+  0048: 01 00 04 00 00 00 00 00 00 00 00 00 01 33 01 33
+  0064: 01 33 03 05 02 00 00 01 00 00 00 00 00 0a 14 32
+[H264:2] SET ret=0 errno=0 gop=1/25 idr=1 profile=0
+[H264] after
+  0000: 04 00 00 00 00 00 04 00 00 00 00 00 01 00 00 00
+  0016: 4c 02 00 00 90 5f 01 00 60 01 20 01 00 00 00 00
+  0032: 00 00 00 00 00 00 00 00 00 00 00 00 01 00 19 00
+  0048: 01 00 04 00 00 00 00 00 00 00 00 00 01 33 01 33
+  0064: 01 33 03 05 02 00 00 01 00 00 00 00 00 0a 14 32
+[SET_BITRATE:2] ret=0 errno=0 cbr=262144 min=262144 max=524288
+
+[SDK] vi_enable(1): OK err=0
+[START] Starting streams...
+[QUERY_STREAM before] ret=0 errno=0 q=00000001 00000001 00000149 00000000
+[START] mask=0x1 attempt=1 ret=0 errno=0
+[START] mask=0x2 attempt=1 ret=-1 errno=22
+[START] mask=0x2 attempt=2 ret=-1 errno=22
+[START] mask=0x2 attempt=3 ret=-1 errno=22
+[START] mask=0x2 attempt=4 ret=-1 errno=22
+[START] mask=0x2 attempt=5 ret=-1 errno=22
+[START] mask=0x2 attempt=6 ret=-1 errno=22
+[START] mask=0x2 attempt=7 ret=-1 errno=22
+[START] mask=0x2 attempt=8 ret=-1 errno=22
+[START] mask=0x2 attempt=9 ret=-1 errno=22
+[START] mask=0x2 attempt=10 ret=-1 errno=22
+[START] mask=0x4 attempt=1 ret=0 errno=0
+[QUERY_STREAM after] ret=0 errno=0 q=00000001 00000002 00000003 00000000
+
+[IDR] force_idr ret=0
+
+[CAPTURE] Starting → /tmp/d1_capture_call_10s.h264
+  [pkt 000] sid=0 nal=0x07 sz=10284 addr=0x76de4000
+  [0 frames] 10284 bytes, 0 IDRs (sid=0 nal=0x07 sz=10284)
+  [pkt 001] sid=0 nal=0x01 sz=124248 addr=0x76de6840
+  [pkt 002] sid=0 nal=0x01 sz=8359 addr=0x76e04da0
+  [pkt 003] sid=2 nal=0x07 sz=12103 addr=0x76e06e60
+  [pkt 004] sid=0 nal=0x07 sz=60364 addr=0x76e09dc0
+  [pkt 005] sid=2 nal=0x01 sz=58719 addr=0x76e189a0
+  [pkt 006] sid=0 nal=0x01 sz=32880 addr=0x76e26f00
+  [pkt 007] sid=2 nal=0x01 sz=13522 addr=0x76e2ef80
+  [pkt 008] sid=0 nal=0x01 sz=34343 addr=0x76e32460
+  [pkt 009] sid=2 nal=0x01 sz=33266 addr=0x76e3aaa0
+  [pkt 010] sid=0 nal=0x01 sz=33901 addr=0x76e42ca0
+  [pkt 011] sid=2 nal=0x01 sz=15359 addr=0x76e4b120
+  [pkt 012] sid=0 nal=0x01 sz=47665 addr=0x76e4ed20
+  [pkt 013] sid=2 nal=0x01 sz=42312 addr=0x76e5a760
+  [pkt 014] sid=0 nal=0x01 sz=48877 addr=0x76e64cc0
+  [pkt 015] sid=2 nal=0x01 sz=22799 addr=0x76e70bc0
+  [pkt 016] sid=0 nal=0x01 sz=38635 addr=0x76e764e0
+  [pkt 017] sid=2 nal=0x01 sz=37886 addr=0x76e7fbe0
+  [pkt 018] sid=0 nal=0x01 sz=27153 addr=0x76e88fe0
+  [pkt 019] sid=2 nal=0x01 sz=12388 addr=0x76e8fa00
+  [pkt 020] sid=0 nal=0x01 sz=27934 addr=0x76e92a80
+  [pkt 021] sid=2 nal=0x01 sz=33427 addr=0x76e997a0
+  [pkt 022] sid=0 nal=0x01 sz=27557 addr=0x76ea1a40
+  [pkt 023] sid=2 nal=0x01 sz=12849 addr=0x76ea8600
+  [pkt 024] sid=0 nal=0x01 sz=30070 addr=0x76eab840
+  [pkt 025] sid=2 nal=0x01 sz=37332 addr=0x76eb2dc0
+  [pkt 026] sid=0 nal=0x01 sz=30499 addr=0x76ebbfa0
+  [pkt 027] sid=2 nal=0x01 sz=14275 addr=0x76ec36e0
+  [pkt 028] sid=0 nal=0x01 sz=33181 addr=0x76ec6ec0
+  [pkt 029] sid=2 nal=0x01 sz=42161 addr=0x76ecf060
+  [pkt 030] sid=0 nal=0x01 sz=31219 addr=0x76ed9520
+  [pkt 031] sid=2 nal=0x01 sz=18837 addr=0x76ee0f20
+  [pkt 032] sid=0 nal=0x01 sz=29317 addr=0x76de58c0
+  [pkt 033] sid=2 nal=0x01 sz=36906 addr=0x76decb60
+  [pkt 034] sid=0 nal=0x01 sz=27988 addr=0x76df5ba0
+  [pkt 035] sid=2 nal=0x01 sz=10795 addr=0x76dfc900
+  [pkt 036] sid=0 nal=0x01 sz=29147 addr=0x76dff340
+  [pkt 037] sid=2 nal=0x01 sz=32971 addr=0x76e06520
+  [pkt 038] sid=0 nal=0x01 sz=28964 addr=0x76e0e600
+  [pkt 039] sid=2 nal=0x01 sz=10500 addr=0x76e15740
+  [pkt 048] sid=0 nal=0x07 sz=55737 addr=0x76e4d560
+  [pkt 052] sid=0 nal=0x07 sz=55989 addr=0x76e6d3c0
+  [pkt 053] sid=2 nal=0x07 sz=54074 addr=0x76e7ae80
+  [25 frames] 1052402 bytes, 0 IDRs (sid=0 nal=0x01 sz=27468)
+  [pkt 098] sid=0 nal=0x07 sz=56091 addr=0x76df1500
+  [pkt 102] sid=0 nal=0x07 sz=59062 addr=0x76e17940
+  [pkt 103] sid=2 nal=0x07 sz=53789 addr=0x76e26000
+  [50 frames] 1906904 bytes, 0 IDRs (sid=0 nal=0x01 sz=28264)
+  [pkt 148] sid=0 nal=0x07 sz=58585 addr=0x76e868c0
+  [pkt 152] sid=0 nal=0x07 sz=58385 addr=0x76eabe60
+  [pkt 153] sid=2 nal=0x07 sz=53045 addr=0x76eba280
+  [75 frames] 2771329 bytes, 0 IDRs (sid=0 nal=0x01 sz=29061)
+  [pkt 198] sid=0 nal=0x07 sz=430 addr=0x76ea1f00
+  [pkt 202] sid=0 nal=0x07 sz=553 addr=0x76ea21e0
+  [pkt 203] sid=2 nal=0x07 sz=386 addr=0x76ea2420
+  [100 frames] 3053510 bytes, 0 IDRs (sid=0 nal=0x01 sz=161)
+  [pkt 248] sid=0 nal=0x07 sz=701 addr=0x76ea2f00
+  [pkt 252] sid=0 nal=0x07 sz=702 addr=0x76ea3260
+  [pkt 253] sid=2 nal=0x07 sz=411 addr=0x76ea3520
+  [125 frames] 3055875 bytes, 0 IDRs (sid=0 nal=0x01 sz=30)
+  [pkt 298] sid=0 nal=0x07 sz=702 addr=0x76ea3ca0
+  [pkt 302] sid=0 nal=0x07 sz=702 addr=0x76ea4000
+  [pkt 303] sid=2 nal=0x07 sz=411 addr=0x76ea42c0
+  [150 frames] 3058115 bytes, 0 IDRs (sid=0 nal=0x01 sz=30)
+  [pkt 348] sid=0 nal=0x07 sz=702 addr=0x76ea4a40
+  [pkt 352] sid=0 nal=0x07 sz=702 addr=0x76ea4da0
+  [pkt 353] sid=2 nal=0x07 sz=411 addr=0x76ea5060
+  [175 frames] 3060355 bytes, 0 IDRs (sid=0 nal=0x01 sz=30)
+  [pkt 398] sid=0 nal=0x07 sz=702 addr=0x76ea57e0
+  [pkt 402] sid=0 nal=0x07 sz=701 addr=0x76ea5b40
+  [pkt 403] sid=2 nal=0x07 sz=411 addr=0x76ea5e00
+  [200 frames] 3062594 bytes, 0 IDRs (sid=0 nal=0x01 sz=30)
+  [pkt 448] sid=0 nal=0x07 sz=702 addr=0x76ea6580
+  [pkt 452] sid=0 nal=0x07 sz=702 addr=0x76ea68e0
+  [pkt 453] sid=2 nal=0x07 sz=411 addr=0x76ea6ba0
+  [225 frames] 3064834 bytes, 0 IDRs (sid=0 nal=0x01 sz=30)
+  [pkt 498] sid=0 nal=0x07 sz=702 addr=0x76ea7320
+  [pkt 502] sid=0 nal=0x07 sz=702 addr=0x76ea7680
+  [pkt 503] sid=2 nal=0x07 sz=411 addr=0x76ea7940
+  [250 frames] 3067074 bytes, 0 IDRs (sid=0 nal=0x01 sz=30)
+  [pkt 548] sid=0 nal=0x07 sz=702 addr=0x76ea80c0
+  [pkt 552] sid=0 nal=0x07 sz=702 addr=0x76ea8420
+  [pkt 553] sid=2 nal=0x07 sz=410 addr=0x76ea86e0
+  [275 frames] 3069314 bytes, 0 IDRs (sid=0 nal=0x01 sz=30)
+  [pkt 598] sid=0 nal=0x07 sz=702 addr=0x76ea8e60
+  [pkt 602] sid=0 nal=0x07 sz=702 addr=0x76ea91c0
+  [pkt 603] sid=2 nal=0x07 sz=411 addr=0x76ea9480
+  [pkt 648] sid=0 nal=0x07 sz=702 addr=0x76ea9c00
+  [300 frames] 3072299 bytes, 0 IDRs (sid=0 nal=0x01 sz=73)
+
+[CAPTURE] Done: 300 frames, 3072299 bytes, 0 IDRs
+[CAPTURE] stream_ids: 0=327 2=324
+[CAPTURE] nal_types: 1=611 7=40
+[RESET_STATE] ioctl(0x40047654, 0) ret=0 errno=0

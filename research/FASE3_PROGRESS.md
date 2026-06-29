@@ -680,6 +680,109 @@ nuestra secuencia actual.
 
 **Próximo test:** Ejecutar `d1_factory` después de Sofia warmup, capturando stream_id==0.
 
+## Actualización 2026-06-29 — D1 confirmado sin Sofia
+
+**Resultado:** `src/d1_capture_v2.c` captura H.264 `stream_id == 0` y `ffprobe`
+confirma resolución **688x576**:
+
+```
+codec_name=h264
+profile=Main
+width=688
+height=576
+coded_width=688
+coded_height=576
+```
+
+Artefactos locales:
+
+| Archivo | Descripción |
+|---------|-------------|
+| `d1_capture_final_sid0.h264` | Captura H.264 D1 válida, `stream_id==0`, 688x576 |
+| `d1_capture_final.log` | Log de la ejecución confirmada |
+
+Puntos técnicos que desbloquearon la captura:
+
+- `0x80047305` después de abrir `/dev/gk_video` sí popula el estado VI necesario.
+- `0x4004767b` se llama con argumento entero `0`, no puntero.
+- `0x80047674` debe leerse y escribirse de vuelta con `0x40047673`.
+- `0x40047687` funciona con el layout exacto de Sofia:
+  - main `688x576`, ch0 mode `1`
+  - sub1 `352x300`, ch1 mode `1`
+  - sub2 `352x288`, ch2 mode `1`
+  - ch3 desactivado, `interlace_scan=1`
+- `0x40046541` es el start real; `0xc004652a` es query.
+- `gadi_vi_enable(vi_handle, 1)` antes de start es necesario.
+- Los buffers internos de H.264 deben reservarse grandes (`512` bytes). Con `128`
+  bytes se corrompe el stack porque el driver usa offsets internos hasta al menos `0xb2`.
+- El stream devuelve SPS/PPS/IDR en buffers cuyo primer NAL es `0x07`; no se deben
+  descartar esperando a un IDR posterior. Hay que escribir esos buffers al `.h264`.
+
+Observaciones pendientes:
+
+- Al configurar streams `0/1/2`, `START mask=0x2` devuelve `EINVAL`, pero `mask=0x1`
+  y `mask=0x4` arrancan y no impiden capturar D1 por `stream_id==0`.
+- `FORCE_IDR 0x4004653c` con mask `1` retorna OK.
+- `get_stream(0xFF)` ve `stream_id 0` y `2`; la captura final filtra/escribe solo
+  `stream_id==0`.
+
+## Actualización 2026-06-29 — vídeo real con llamada activa y fps correcto
+
+La captura D1 inicial era técnicamente válida pero podía verse azul/falsa porque no
+se había activado la llamada en el MCU. El vídeo real aparece al enviar antes de
+capturar:
+
+```sh
+printf "\xfb\x14\x01\x20" > /dev/ttySGK1
+```
+
+Y al terminar:
+
+```sh
+printf "\xfb\x14\x00\x1f" > /dev/ttySGK1
+```
+
+Esto confirma que Sofia no es necesaria por llamada si el hardware ya fue inicializado
+una vez tras boot. El modelo actual es:
+
+1. Sofia warmup una vez por boot (~30s) para inicializar VI/sensor/driver.
+2. Matar Sofia.
+3. Por cada llamada: start-call serial -> capturar/enviar media -> stop-call serial.
+
+También se corrigió el framerate. La llamada `0x40046533` debe recibir el intervalo
+que Sofia calcula como `60/60`:
+
+```c
+mask = 1 << stream_id;
+numerator = 60;
+denominator = 60;
+```
+
+El intento anterior usaba `1/25`, lo que reducía el ritmo real de captura a ~1 fps.
+Al reempaquetar después a 25 fps el vídeo se veía acelerado y tardaba minutos en
+recoger 300 frames.
+
+Captura confirmada con llamada activa y fps corregido:
+
+| Archivo | Descripción |
+|---------|-------------|
+| `d1_capture_call_12s_fpsfix_sid0.h264` | Raw H.264 D1 con llamada activa |
+| `d1_capture_call_12s_fpsfix_25fps.mp4` | MP4 de inspección, 688x576 |
+| `d1_capture_call_12s_fpsfix.log` | Log de la prueba |
+
+Resultado de la prueba:
+
+```text
+[CAPTURE] Done: 331 frames, 594206 bytes, 0 IDRs
+width=688
+height=576
+avg_frame_rate=25/1
+nb_read_frames=361
+duration=14.44
+```
+
+La documentación consolidada del flujo está en `docs/d1_video_capture.md`.
+
 ### Notas importantes para la próxima sesión
 
 - `sys_state = .data section base` de media.ko (mismo puntero usado en todas las funciones)
@@ -688,4 +791,3 @@ nuestra secuencia actual.
 - `tv_probe` en media.ko = inicializa el TV decoder (VO side), NO el VI input
 - La única instrucción que escribe `sys_state[0xf8]` está en `tv_probe` (son bytes del string "vide_out0")
 - `SYS_Get_Vi_Capability()` retorna `sys_state[0xdc] + 12` = puntero a VI capability struct
-

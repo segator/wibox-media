@@ -80,6 +80,17 @@ To capture a trace:
 2. From the app, start/stop video call to capture VI+VENC streaming ioctls
 3. Download trace: `nc` or `scp` from `/mnt/mtd/iotrace_boot.log`
 
+## D1 Video Capture
+
+The current working D1 H.264 capture flow is documented in
+[`docs/d1_video_capture.md`](docs/d1_video_capture.md).
+
+Current summary:
+- Sofia warmup is still required once per boot, not per call.
+- Per call, enable the MCU call path with `/dev/ttySGK1`, capture `stream_id==0`,
+  then send the stop-call command.
+- Verified output is H.264 Main profile at 688x576.
+
 ## Clean build artifacts
 
 ```bash
