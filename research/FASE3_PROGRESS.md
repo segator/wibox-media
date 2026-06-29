@@ -101,3 +101,35 @@ PoC compila contra libadi.a y funciona en el WiBox:
 
 No necesita Sofia — módulos kernel (media.ko, etc.) son suficientes.
 Firmware (gk_fw.bin) ya está en /lib/firmware/.
+
+## 2026-06-29 — GADI SDK: GET funciona, SET crashea
+
+### Funciona
+- gadi_sys_init() ✓
+- gadi_vi_init() + gadi_vi_open() ✓  
+- gadi_vout_init() + gadi_vout_open() ✓
+- gadi_venc_init() + gadi_venc_open(vi, vo) ✓
+- gadi_venc_print_params() ✓
+- gadi_venc_get_channel_state() ✓
+- gadi_venc_get_channels_params() ✓ — chan1=1 w=688 h=576
+- gadi_venc_get_stream_format() ✓
+- gadi_venc_get_h264_config() ✓
+
+### Crashing (SEGV)
+- gadi_venc_set_channels_params() — SEGV en libadi, ioctl OK
+- gadi_venc_set_stream_format() — SEGV
+- gadi_venc_set_h264_config() — SEGV
+
+### Diagnóstico
+libadi.a R10973 (nuestro SDK v2.0.0) tiene bug en funciones SET.
+Sofia usa R13210 (funciona). Los ioctls pasan (el DSP recibe los datos)
+pero la lib crashea al retornar.
+
+Headers correctos combinados:
+- adi_types.h, adi_sys.h, basetypes.h → del repo gk7102
+- adi_venc.h, adi_vi.h → de nuestro SDK v2.0.0 (match libadi.a)
+- Structs: sizeof(GADI_VENC_ChannelsParamsT)=48 (verificado por disassembly)
+
+### Próximo
+- Extraer libadi de Sofia (R13210) o encontrar SDK v2.1+
+- O usar GET con SDK + SET con ioctls crudos (tenemos los datos del trace)
