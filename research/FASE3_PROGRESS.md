@@ -450,3 +450,242 @@ Only 0xFF (all streams) works.
 The SDK's gadi_venc_get_stream has a bug with specific stream IDs.
 The 0xFF wildcard path works because it bypasses the stream matching logic.
 Next: fix stream ID filtering to get clean single-stream video.
+
+---
+
+## 2026-06-29 — media.ko reverse engineering (SESIÓN ACTUAL)
+
+### Objetivo de la sesión
+Resolver el bloqueo de `0x40047687` (set_srcbuf_format) que siempre devuelve EINVAL,
+y capturar video D1 (688x576) limpio del stream principal.
+
+### Método: reversear media.ko directamente
+
+**media.ko extraído del WiBox** (303KB, not stripped — tiene símbolos):
+```bash
+sshpass -p 'qv2008' ssh root@192.168.0.196 "cat /ko/media.ko | base64" | base64 -d > /tmp/media.ko
+arm-goke-linux-uclibcgnueabi-objdump -d media.ko > /tmp/media_disasm.txt  # 55382 líneas
+```
+
+### Hallazgo 1: Dispatch table de media_drv_ioctl
+
+El ioctl principal `media_drv_ioctl` despacha por el byte de tipo (bits [15:8]):
+```
+type=0x69 ('i') → VI_ADAPTER_Ioctl
+type=0x73 ('s') → VI_SOURCE_Ioctl
+type=0x24 ('$') → VO_SOURCE_Ioctl
+type=0x23 ('#') → VO_SINK_Ioctl
+type=0x76 ('v') → SYS_Ioctl          ← 0x40047687 va aquí
+type=0x65 ('e') → VENC_ENCODE_Ioctl  ← START/STOP/GET_STREAM van aquí
+type=0x64 ('d') → VDEC_Ioctl
+type=0x70 ('p') → ISP_Ioctl
+type=0x6f ('o') → REGION_OVERLAY_Ioctl
+type=0x50 ('P') → REGION_PM_Ioctl
+```
+
+**Corrección importante:** `0x40047687` NO va a VENC_ENCODE (type=0x65) sino a SYS_Ioctl (type=0x76).
+
+### Hallazgo 2: Handler de 0x40047687 — struct de 40 bytes
+
+Rastreado el árbol de búsqueda binaria en `SYS_Ioctl`:
+```
+0x40047689 - 2 = 0x40047687 → handler en 0x1b9f0 → llama sys_encode_guard_task+0x290
+```
+
+La función `sys_encode_guard_task+0x290` (`0x177ec`):
+1. Hace `__copy_from_user(fp-104, user_ptr, **40 bytes**)` ← NO son 4 bytes como dice _IOC_SIZE!
+2. El `_IOC_SIZE(0x40047687) = 4` es MENTIRA — el driver copia 40 bytes internamente
+
+**Layout del struct de 40 bytes** (derivado de Ghidra + disasm de media.ko):
+
+| Offset | Tipo | Campo | Descripción |
+|--------|------|-------|-------------|
+| 0 | u16 | main_width | Debe ser múltiplo de 16 (e.g., 688) |
+| 2 | u16 | main_height | Debe ser par (e.g., 576) |
+| 4 | u16 | ch_mode_0 | Modo canal 0 (0..2) |
+| 6 | u16 | sub1_w | Ancho sub-canal 1 (≤ main_width) |
+| 8 | u16 | sub1_h | Alto sub-canal 1 (≤ main_height) |
+| 10 | u16 | main_w_dup | = main_width (validado ≤ main_width) |
+| 12 | u16 | main_h_dup | = main_height |
+| 14 | u16 | ch_mode_1 | |
+| 16 | u16 | sub2_w | |
+| 18 | u16 | sub2_h | |
+| 20 | u16 | main_w_dup2 | = main_width |
+| 22 | u16 | main_h_dup2 | |
+| 24 | u16 | ch_mode_2 | |
+| 26 | u16 | sub3_w | |
+| 28 | u16 | sub3_h | |
+| 30 | u16 | main_w_dup3 | = main_width |
+| 32 | u16 | main_h_dup3 | |
+| 34 | u16 | ch_mode_3 | |
+| 36 | u8 | interlace_scan | 0=progresivo, 1=entrelazado |
+| 37-39 | u8[3] | pad | |
+
+Confirmado por Sofia.c (Ghidra): `FUN_0026e800 → ioctl(*param_1, 0x40047687, &local_6c)`.
+
+### Hallazgo 3: Validaciones del driver
+
+La función `sys_encode_guard_task+0x290` hace 9 validaciones en orden:
+
+1. `main_width & 0xf == 0` → debe ser múltiplo de 16 ← **688 ÷ 16 = 43 ✓**
+2. `main_height & 1 == 0` → debe ser par ← **576 es par ✓**
+3. `sys_state[0xf8] >= main_width` → max_width del hardware ← **PASA** (.data[0xf8]=0x6976=26998 >> 688)
+4. `sys_state[0xfa] >= main_height` ← **PASA** (.data[0xfa]=0x6564=25956 >> 576)
+5. `SYS_MEM_Exit+0x16c(ch_idx, width, height, ...)` → validación de memoria disponible
+6. `sub_widths/heights <= main_width/height` (3x) ← **PASA** si usamos 688x576 en todos
+7. `sys_state[0x14] == 1 → ch_mode_0 <= 2`
+8. Si `sys_state[0x0c] == main_width && sys_state[0x0e] == main_height && sys_state[0x18] == ch_mode_0` → return 0 (ya configurado, no-op)
+9. `sys_state[0xd0] == 0` → encoder debe estar PARADO ← **POSIBLE FALLO**
+
+### Hallazgo 4: SYS_MEM_Exit+0x16c necesita sys_state[0xdc] no-null
+
+La función `SYS_MEM_Exit+0x16c` (0x15b40) usa `r5 = sys_state[0xdc]` para:
+```
+ldrh ip, [r5, #0x126]   ← si r5=NULL → lee de addr 0x126 → valores incorrectos
+ldrh r3, [r5, #0x124]   ← ídem
+```
+
+Si `sys_state[0xdc] = 0` (NULL), lee valores 0, y la validación:
+```
+cmp r1(688), r3(0) → 688 > 0 → bhi → EINVAL: "width exceeds hardware limits"
+```
+
+**Este es el verdadero EINVAL.** `sys_state[0xdc]` apunta a la estructura de estado VI, que se inicializa cuando VI está activo. Después de matar Sofia, este puntero puede ser NULL si el sistema no hace VI init propio.
+
+### Hallazgo 5: Ioctls de reset incorrectos
+
+**Error previo:** Usaba `0x80047652` como "STOP_STREAM" → en realidad es `_IOR('v', 0x52)` = GET_VERSION (lectura).
+
+**Correcto:**
+- `0x40047654` = `_IOW('v', 0x54)` = SET_ENCODE_STATE = reset del encoder
+  - Valor 0 = reset/stop, confirma en sofia_ioctls_captured.log: `_IOC(_IOC_WRITE, 0x76, 0x54, 0x04), 0` al inicio
+  - Handler en SYS_Ioctl: `ldr r4, [r3, #208]` = lee encode_state actual, decide acción
+  - Si encode_state=2 (streaming) → llama `VENC_ENCODE_Ioctl` para parar
+
+### Hallazgo 6: El global sys_state es .data section base
+
+Ambas referencias:
+- text[17e6c]: `R_ARM_ABS32 .data+0` (sys_encode_guard_task, nuestro ioctl)
+- text[c770]: `R_ARM_ABS32 .data+0` (VI_CORE_Add_Adapter)
+
+Apuntan al MISMO struct en `.data`. El struct es el estado global del sistema multimedia.
+
+`.data[0xdc]` (campo 0xdc del global state) = puntero al VI subsystem.  
+Es NULL en el .ko file → se inicializa en runtime por VI_Init/VI_CORE_Add_Adapter.
+
+### Hallazgo 7: tv_probe escribe .bss, no .data[0xf8]
+
+La única instrucción `strh r3, [r4, #248]` está en `tv_probe` (TV decoder init).
+Su `r4` viene de `kmem_cache_alloc` y se guarda en `.bss+0` (TV device singleton).
+NO escribe a `.data[0xf8]`.
+
+`.data[0xf8] = 0x6976` es parte del string "video_out0" en la estructura global.
+Como entero: 26998, que es >> 688 → la validación `max_width >= 688` SIEMPRE PASA.
+
+### Hallazgo 8: Sofia.c confirm struct layout (FUN_0026e800)
+
+```c
+// gadi_venc_set_channels_params en Sofia (R13210)
+local_6c = *(ushort*)(param_2 + 4);   // main_width (0x02b0=688)
+local_6a = *(ushort*)((int)param_2+6); // main_height (0x0240=576)
+local_68 = param_2[2];                 // ch_mode_0
+local_66 = *(ushort*)(param_2+16);     // sub1_w
+local_64 = *(ushort*)(param_2+18);     // sub1_h
+local_62 = local_6c;                   // main_width REPEAT
+local_60 = local_6a;                   // main_height REPEAT
+...
+ioctl(*param_1, 0x40047687, &local_6c);
+```
+
+Primeros 4 bytes del struct = `[b0, 02, 40, 02]` = `{width=0x02b0=688, height=0x0240=576}`.
+Confirmado vs trace de Sofia: arg en trace = `0x7ecf26a4` con primeros 4 bytes = `0x024002b0`.
+
+### Tests realizados (d1_capture_v2)
+
+Programa compilado: SDK init (sys→vi→vout→venc→map_bsb) + raw fd para SYS ioctls.
+
+Resultados sin éxito:
+1. `IOC_STOP_STREAM = 0x80047652` (INCORRECTO) → era GET_VERSION, encoder state no se resetea
+2. `IOC_SET_ENCODE_STATE = 0x40047654` (CORRECTO) → ret=0 pero EINVAL sigue
+3. `IOC_SET_LIMITS = 0x40047673` (antes de FORMAT) → ret=0 pero EINVAL sigue
+4. Struct con interlace=0 y interlace=1 → ambas EINVAL
+
+**Estado actual:** EINVAL se produce en `SYS_MEM_Exit+0x16c` porque `sys_state[0xdc]` es NULL o incorrecto después de que `gadi_vi_open()` inicia VI pero no llega a establecer este puntero en el mismo contexto de proceso.
+
+### Archivos creados en esta sesión
+
+| Archivo | Descripción |
+|---------|-------------|
+| `/tmp/media.ko` | Copia del kernel module extraído del WiBox |
+| `/tmp/media_disasm.txt` | Disassembly completo (55382 líneas) |
+| `/home/aymerici/wibox-media/src/d1_capture.c` | Primer intento (SDK incorrecto) |
+| `/home/aymerici/wibox-media/src/d1_capture_v2.c` | SDK correcto + raw ioctl |
+| `/home/aymerici/wibox-media/src/d1_factory.c` | Sin SET_SRCBUF_FORMAT, usa factory config |
+| `/home/aymerici/wibox-media/d1_capture_v2` | Binario compilado ARM |
+| `/home/aymerici/wibox-media/d1_factory` | Binario factory (pendiente de test) |
+
+### Secuencia ioctl de Sofia (de sofia_ioctls_captured.log)
+
+El orden que Sofia usa ANTES de llamar `0x40047687`:
+```
+0x80047652 ('v',0x52) READ  → GET_VERSION al inicio
+0x40047654 ('v',0x54) WRITE → RESET encode_state to 0
+0x80047670 ('v',0x70) READ  → GET_CHIP_INFO
+0x40047316 ('s',0x16) WRITE → VI_SOURCE: set source mode
+0x80047301 ('s',0x01) READ  → VI_SOURCE: get state
+0x80047304 ('s',0x04) READ  → VI_SOURCE: get format
+0x80046920 ('i',0x20) READ  → VI_ADAPTER: get adapter info
+0x40046921 ('i',0x21) WRITE → VI_ADAPTER: configure adapter
+0x40047303 ('s',0x03) WRITE → VI_SOURCE: set something
+0x4004730b ('s',0x0b) WRITE → VI_SOURCE: set something
+0x40047304 ('s',0x04) WRITE → VI_SOURCE: set FPS
+0x80047305 ('s',0x05) READ  → VI_SOURCE: GET CAPABILITIES ← crucial
+0x40047673 ('v',0x73) WRITE → SYS: set resource limits
+0x40047687 ('v',0x87) WRITE → SYS: SET_SRCBUF_FORMAT ← nuestro target
+0x40047683 ('v',0x83) WRITE → SYS: SET_SRCBUF_TYPE
+```
+
+La llamada `0x80047305` (VI_SOURCE READ nr=5) probablemente inicializa/establece
+`sys_state[0xdc]` con el puntero al estado VI activo. Esto es lo que falta en
+nuestra secuencia actual.
+
+### Hipótesis de bloqueo actual
+
+1. `gadi_vi_open()` llama algunas VI_SOURCE ioctls pero NO exactamente la misma
+   secuencia que Sofia (falta la llamada a `0x80047305` que establece `sys_state[0xdc]`)
+2. Cuando `sys_encode_guard_task+0x290` intenta `sys_state[0xdc].field_0x124`,
+   el puntero es NULL o apunta a memoria no inicializada
+3. El resultado: `SYS_MEM_Exit+0x16c` falla → EINVAL
+
+### Plan de resolución (próximos pasos)
+
+**Opción A (más fácil): Usar factory config de Sofia sin SET_SRCBUF_FORMAT**
+- Sofia ya configuró los 3 encoders (type0=D1, type1/2=CIF)
+- Después de matar Sofia: SDK init + map_bsb + START_STREAM + get_stream
+- Filtrar `stream_id == 0` para capturar D1 (688x576)
+- NO se necesita 0x40047687 para este approach
+
+**Opción B: Completar la secuencia VI_SOURCE antes de llamar 0x40047687**
+1. Después de `gadi_vi_open()` SDK, llamar manualmente:
+   - `ioctl(fd, 0x40047316, buf)` → set VI source mode
+   - `ioctl(fd, 0x80047305, &v)` → read VI capabilities (establece sys_state[0xdc])
+   - `ioctl(fd, 0x40047673, limits)` → set resource limits
+2. Luego call `0x40047687` con el struct de 40 bytes correcto
+
+**Opción C: Modificar approach de capture**
+- La sesión anterior capturó frames funcionales usando la factory config
+- El stream D1 principal (stream_id=0) produce IDR de ~1800 bytes y P-slices de ~89 bytes
+- Problema anterior: filtrábamos stream_id==2 (sub-stream CIF)
+- Solución: filtrar stream_id==0 para obtener D1
+
+**Próximo test:** Ejecutar `d1_factory` después de Sofia warmup, capturando stream_id==0.
+
+### Notas importantes para la próxima sesión
+
+- `sys_state = .data section base` de media.ko (mismo puntero usado en todas las funciones)
+- El campo `sys_state[0xd0]` = encode_state (debe ser 0 para reconfigurar)
+- El campo `sys_state[0xdc]` = puntero al VI state (debe ser no-null para que 0x40047687 funcione)
+- `tv_probe` en media.ko = inicializa el TV decoder (VO side), NO el VI input
+- La única instrucción que escribe `sys_state[0xf8]` está en `tv_probe` (son bytes del string "vide_out0")
+- `SYS_Get_Vi_Capability()` retorna `sys_state[0xdc] + 12` = puntero a VI capability struct
+
