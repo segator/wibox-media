@@ -398,3 +398,29 @@ Without any manual configuration, the factory's pre-configured VENC produces:
 6. Save frames to file
 
 Needs fresh state each run — can't restart without reboot.
+
+## 2026-06-29 — Working video capture! (sub-stream)
+
+### Recipe for video capture (sub-stream only)
+1. Reboot WiBox (clean VENC state)
+2. Start Sofia for 25s (fully initializes VENC, starts all 3 encoders)  
+3. Kill Sofia
+4. Our program: map_bsb via SDK, start_stream via raw fd, force_idr
+5. Capture with gadi_venc_get_stream (stream_id=0xFF)
+
+### Results
+- 150 frames in 10 seconds (~12KB total)
+- P-slices only (NAL type 1: 0x41), no SPS/PPS/IDR  
+- Sub-stream 2 dominates (352x288), main stream consumed by Sofia
+- Frame sizes: 14-89 bytes (sub-stream, low bitrate)
+
+### Limitations
+- Main stream (688x576) not accessible because Sofia consumes it
+- Need to configure our own encoder for clean main stream capture
+- Requires working 0x40047687 (srcbuf_format) to bypass Sofia entirely
+- All SET functions in R10973 SDK crash before ioctl
+
+### Next milestone
+- Main stream D1 capture: need to make 0x40047687 work
+  OR extract the main stream before Sofia consumes it
+  OR start our own encoder without Sofia
