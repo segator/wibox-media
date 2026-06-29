@@ -13,11 +13,8 @@ via kernel ioctls using the GADI SDK (`libadi.a`) for initialization only.
 - `research/KERNEL_ANALYSIS.md` — `media.ko` reverse engineering reference (ioctl dispatch table, struct layouts, sys_state fields)
 - `research/SOFIA_IOCTL_ANALYSIS.md` — full trace analysis of Sofia's 4,969 ioctls (thread map, init sequence, streaming sequence)
 
-**Source code (latest programs):**
-- `src/d1_capture_v2.c` — correct SDK init chain + raw ioctls (blocked on `0x40047687` EINVAL)
-- `src/d1_factory.c` — no-reconfigure approach: reuse Sofia's encoder config, filter stream_id=0 for D1
-- `src/sip_media_full_init.c` — reference for full ioctl sequence
-- `src/gadi_tests/poc_init_open.c` — minimal correct SDK init chain example
+**Source code:**
+- `src/d1_video_capture.c` — consolidated working D1 H.264 capture test.
 
 **Sofia ioctl traces (ground truth):**
 - `sofia_ioctls_captured.log` — full ioctl trace from Sofia (root/working dir copy)
@@ -57,10 +54,10 @@ docker run --rm -v $(pwd):/work -v /path/to/sdk:/sdk wibox-build:latest \
 ## Current State (as of 2026-06-29)
 
 ### What works
-- SDK init chain: `gadi_sys_init → gadi_vi_init+open → gadi_vout_init+open → gadi_venc_init+open → gadi_venc_map_bsb(handle)`
-- `gadi_venc_get_stream(handle, 0xFF, &stream)` — wildcard captures any stream
-- H.264 frames captured successfully (SPS+PPS+IDR+P-slices), playable in VLC
-- Problem: previous captures were `stream_id==2` (CIF 352×288), not D1
+- `src/d1_video_capture.c` captures H.264 `stream_id==0` from the main D1 encoder.
+- Resolution verified by `ffprobe`: `688x576`, H.264 Main profile.
+- Real camera image works when the MCU call path is enabled with `/dev/ttySGK1`.
+- Sofia is still required as a one-time warmup after boot, but not per call.
 
 ### Stream ID map
 | stream_id | Encoder type | Resolution |
@@ -70,25 +67,17 @@ docker run --rm -v $(pwd):/work -v /path/to/sdk:/sdk wibox-build:latest \
 | 2 | type2 | 352×288 |
 | 3 | type3 | preview |
 
-### Active blocker: `0x40047687` returns EINVAL
-`SET_SRCBUF_FORMAT` (ioctl `0x40047687`) always fails with EINVAL.
+### Current video workflow
+1. Start Sofia once after boot and let it warm up for about 30 seconds.
+2. Kill Sofia.
+3. Start call video path: `printf "\xfb\x14\x01\x20" > /dev/ttySGK1`.
+4. Run `/tmp/d1_video_capture /tmp/d1_capture.h264 10`.
+5. Stop call video path: `printf "\xfb\x14\x00\x1f" > /dev/ttySGK1`.
+6. Verify with `ffprobe`; expected resolution is `688x576`.
 
-Root cause: `sys_state[0xdc]` (pointer to VI state struct in `media.ko` global `.data`) is NULL
-when the VI ioctl sequence is incomplete. Specifically, `ioctl(fd, 0x80047305)` (VI_SOURCE
-READ nr=5) is missing — it calls `VI_CORE_Source_Cmd(cmd=0x2105)` which populates this pointer.
-
-Without `sys_state[0xdc]`, function `SYS_MEM_Exit+0x16c` reads from NULL+0x124 → gets 0 →
-validation `688 <= 0` fails → EINVAL.
-
-### Immediate next step: test `d1_factory`
-`d1_factory` skips `SET_SRCBUF_FORMAT` entirely, reuses Sofia's pre-configured encoders,
-and filters `stream_id==0` for D1. This is the highest-probability path to get D1 frames.
-
-**Workflow:**
-1. Start Sofia (warmup ~30s until "encoder start" log appears)
-2. Kill Sofia
-3. Upload and run `d1_factory`
-4. If `stream_id==0` frames appear, save as `.h264` and verify with `ffprobe`
+### Next implementation target
+Integrate audio from the existing `wibox-audio` work with this video path, then package
+both as SIP/RTP media for each call.
 
 ## Key Technical Facts
 
@@ -159,8 +148,8 @@ gadi_venc_map_bsb(handle);   // no extra args!
 ```
 
 ### Known pitfalls
-- **Sofia warmup required**: VI system state (`sys_state[0xdc]`) is only valid after Sofia
-  initializes the VI pipeline (~30s). Kill Sofia after seeing "encoder start" in logs.
+- **Sofia warmup required once per boot**: VI system state (`sys_state[0xdc]`) is only
+  valid after Sofia initializes the VI pipeline (~30s). Kill Sofia after warmup.
 - **`0x80047652` is GET_VERSION, NOT stop_stream** — the correct reset is `0x40047654` with value 0.
 - **SDK SET functions SEGV**: `gadi_venc_set_channels_params`, `gadi_venc_set_stream_format`,
   `gadi_venc_set_h264_config` — all crash before reaching the ioctl (SDK r10973 vs kernel r13210 mismatch).

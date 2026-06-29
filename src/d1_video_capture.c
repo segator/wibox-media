@@ -1,16 +1,20 @@
 /*
- * d1_capture_v2.c - GK7102S D1 H.264 capture - FIXED SDK init
+ * d1_video_capture.c - GK7102S D1 H.264 capture smoke test
  *
  * SDK init order: sys_init → vi_init+open → vout_init+open → venc_init+open+map_bsb
  * Then raw fd ioctls for VENC config (SET_SRCBUF_FORMAT, etc.)
  *
- * KEY DISCOVERY: ioctl 0x40047687 expects 40 bytes (NOT 4!)
- * Requires sys_state->max_width/height to be set by VI init (Sofia warmup)
+ * This is the consolidated video test that has been verified to capture
+ * stream_id==0 as 688x576 H.264 when the call path is enabled by the MCU.
  *
  * Prerequisites:
- *   1. Sofia warmup 25-30s (sets VI sys_state: max_width=688, max_height=576)
+ *   1. Sofia warmup once after boot (about 30s), then kill Sofia.
  *   2. Kill Sofia
- *   3. Run this program
+ *   3. Start the call path:
+ *      printf "\xfb\x14\x01\x20" > /dev/ttySGK1
+ *   4. Run this program
+ *   5. Stop the call path:
+ *      printf "\xfb\x14\x00\x1f" > /dev/ttySGK1
  */
 
 #include <stdio.h>
@@ -147,97 +151,31 @@ static int get_vi_caps_once(int fd)
     return r;
 }
 
-static int set_srcbuf_format_variant(const char *name, int interlace, uint16_t ch_mode,
-                                     uint16_t sub_w, uint16_t sub_h)
+static int set_srcbuf_format(void)
 {
     struct srcbuf_format_t fmt;
     memset(&fmt, 0, sizeof(fmt));
-    fmt.main_width    = 688;  fmt.main_height   = 576;
-    fmt.ch_mode_0     = ch_mode;
-    fmt.sub1_w        = sub_w; fmt.sub1_h        = sub_h;
-    fmt.main_w_dup    = 688;  fmt.main_h_dup    = 576;
-    fmt.ch_mode_1     = ch_mode;
-    fmt.sub2_w        = sub_w; fmt.sub2_h        = sub_h;
-    fmt.main_w_dup2   = 688;  fmt.main_h_dup2   = 576;
-    fmt.ch_mode_2     = ch_mode;
-    fmt.sub3_w        = sub_w; fmt.sub3_h        = sub_h;
-    fmt.main_w_dup3   = 688;  fmt.main_h_dup3   = 576;
-    fmt.ch_mode_3     = ch_mode;
-    fmt.interlace_scan = (uint8_t)interlace;
+    fmt.main_width = 688;       fmt.main_height = 576;
+    fmt.ch_mode_0 = 1;
+    fmt.sub1_w = 352;           fmt.sub1_h = 300;
+    fmt.main_w_dup = 688;       fmt.main_h_dup = 576;
+    fmt.ch_mode_1 = 1;
+    fmt.sub2_w = 352;           fmt.sub2_h = 288;
+    fmt.main_w_dup2 = 688;      fmt.main_h_dup2 = 576;
+    fmt.ch_mode_2 = 1;
+    fmt.sub3_w = 0;             fmt.sub3_h = 0;
+    fmt.main_w_dup3 = 688;      fmt.main_h_dup3 = 576;
+    fmt.ch_mode_3 = 0;
+    fmt.interlace_scan = 1;
 
-    printf("[SET_SRCBUF_FORMAT] %s interlace=%d ch_mode=%u sub=%ux%u struct_size=%zu\n",
-           name, interlace, ch_mode, sub_w, sub_h, sizeof(fmt));
-
-    /* Print first 8 bytes for debug */
-    uint16_t *p = (uint16_t*)&fmt;
-    printf("  bytes: %04x %04x %04x %04x\n", p[0], p[1], p[2], p[3]);
-
+    printf("[SET_SRCBUF_FORMAT] Sofia D1 layout struct_size=%zu\n", sizeof(fmt));
+    uint16_t *p = (uint16_t *)&fmt;
+    printf("  bytes: %04x %04x %04x %04x %04x %04x %04x %04x\n",
+           p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
     int ret = ioctl(gfd, IOC_SET_SRCBUF_FORMAT, &fmt);
-    printf("[SET_SRCBUF_FORMAT] → ret=%d errno=%d (%s)\n",
+    printf("[SET_SRCBUF_FORMAT] -> ret=%d errno=%d (%s)\n",
            ret, errno, strerror(errno));
     return ret;
-}
-
-static int set_srcbuf_format(void)
-{
-    {
-        struct srcbuf_format_t fmt;
-        memset(&fmt, 0, sizeof(fmt));
-        fmt.main_width = 688;       fmt.main_height = 576;
-        fmt.ch_mode_0 = 1;
-        fmt.sub1_w = 352;           fmt.sub1_h = 300;
-        fmt.main_w_dup = 688;       fmt.main_h_dup = 576;
-        fmt.ch_mode_1 = 1;
-        fmt.sub2_w = 352;           fmt.sub2_h = 288;
-        fmt.main_w_dup2 = 688;      fmt.main_h_dup2 = 576;
-        fmt.ch_mode_2 = 1;
-        fmt.sub3_w = 0;             fmt.sub3_h = 0;
-        fmt.main_w_dup3 = 688;      fmt.main_h_dup3 = 576;
-        fmt.ch_mode_3 = 0;
-        fmt.interlace_scan = 1;
-
-        printf("[SET_SRCBUF_FORMAT] sofia_exact struct_size=%zu\n", sizeof(fmt));
-        uint16_t *p = (uint16_t*)&fmt;
-        printf("  bytes: %04x %04x %04x %04x %04x %04x %04x %04x\n",
-               p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
-        int ret = ioctl(gfd, IOC_SET_SRCBUF_FORMAT, &fmt);
-        printf("[SET_SRCBUF_FORMAT] -> ret=%d errno=%d (%s)\n",
-               ret, errno, strerror(errno));
-        if (ret == 0) {
-            printf("[SET_SRCBUF_FORMAT] selected variant: sofia_exact\n");
-            return 0;
-        }
-    }
-
-    struct {
-        const char *name;
-        uint16_t ch_mode;
-        uint16_t sub_w;
-        uint16_t sub_h;
-        int interlace;
-    } variants[] = {
-        {"d1_all_progressive", 0, 688, 576, 0},
-        {"d1_all_interlaced",  0, 688, 576, 1},
-        {"cif_subs_mode0_prog", 0, 352, 288, 0},
-        {"cif_subs_mode0_int",  0, 352, 288, 1},
-        {"cif_subs_mode1_prog", 1, 352, 288, 0},
-        {"cif_subs_mode1_int",  1, 352, 288, 1},
-        {"cif_subs_mode2_prog", 2, 352, 288, 0},
-        {"cif_subs_mode2_int",  2, 352, 288, 1},
-    };
-
-    for (unsigned i = 0; i < sizeof(variants) / sizeof(variants[0]); i++) {
-        int ret = set_srcbuf_format_variant(variants[i].name,
-                                            variants[i].interlace,
-                                            variants[i].ch_mode,
-                                            variants[i].sub_w,
-                                            variants[i].sub_h);
-        if (ret == 0) {
-            printf("[SET_SRCBUF_FORMAT] selected variant: %s\n", variants[i].name);
-            return 0;
-        }
-    }
-    return -1;
 }
 
 static void dump_bytes(const char *tag, const uint8_t *buf, size_t len)
@@ -365,6 +303,7 @@ static void query_stream0(const char *tag)
 int main(int argc, char **argv)
 {
     const char *outfile = argc > 1 ? argv[1] : "/tmp/d1_out.h264";
+    int capture_seconds = argc > 2 ? atoi(argv[2]) : 12;
     GADI_ERR err;
     int ret;
 
@@ -378,8 +317,11 @@ int main(int argc, char **argv)
         sigaction(SIGALRM, &sa, NULL);
     }
 
-    printf("=== D1 Capture v2 ===\n");
-    printf("Output: %s\n\n", outfile);
+    if (capture_seconds <= 0) capture_seconds = 12;
+
+    printf("=== D1 Video Capture ===\n");
+    printf("Output: %s\n", outfile);
+    printf("Duration: %d seconds\n\n", capture_seconds);
 
     /* ── SDK Init Chain ── */
     printf("[SDK] gadi_sys_init...\n");
@@ -461,7 +403,7 @@ int main(int argc, char **argv)
     set_resource_limits();
 
     /* ── Key ioctl: SET_SRCBUF_FORMAT ── */
-    printf("[CONFIG] SET_SRCBUF_FORMAT (40-byte struct variants)...\n");
+    printf("[CONFIG] SET_SRCBUF_FORMAT (Sofia D1 40-byte struct)...\n");
     ret = set_srcbuf_format();
     if (ret < 0) {
         fprintf(stderr, "FATAL: SET_SRCBUF_FORMAT failed.\n");
@@ -542,7 +484,8 @@ int main(int argc, char **argv)
     int seen_nal[32] = {0};
 
     time_t capture_start = time(NULL);
-    for (int i = 0; i < 5000 && errors < 30 && time(NULL) - capture_start < 12; i++) {
+    for (int i = 0; i < 5000 && errors < 30 &&
+                    time(NULL) - capture_start < capture_seconds; i++) {
         GADI_VENC_StreamT st;
         memset(&st, 0, sizeof(st));
 

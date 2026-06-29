@@ -60,7 +60,7 @@ docker run --rm \
   -I/work/include/adi \
   -I/sdk/adi/include \
   -I/sdk/install/arm11-gcc-uClibc-linux-GK710XS/include \
-  -o /work/d1_capture_v2 /work/src/d1_capture_v2.c \
+  -o /work/d1_video_capture /work/src/d1_video_capture.c \
   /sdk/install/arm11-gcc-uClibc-linux-GK710XS/lib/libadi.a \
   -lpthread -lm
 ```
@@ -68,18 +68,18 @@ docker run --rm \
 Upload through base64 because dropbear on the device has no SFTP support:
 
 ```sh
-base64 d1_capture_v2 | ssh root@192.168.0.196 \
-  "base64 -d > /tmp/d1_capture_v2 && chmod +x /tmp/d1_capture_v2"
+base64 d1_video_capture | ssh root@192.168.0.196 \
+  "base64 -d > /tmp/d1_video_capture && chmod +x /tmp/d1_video_capture"
 ```
 
 ## Capture Test
 
 ```sh
 ssh root@192.168.0.196 '
-  killall Sofia Sofia_temp.sh sofia_trace system_sofia timeout d1_capture_v2 2>/dev/null || true
+  killall Sofia Sofia_temp.sh sofia_trace system_sofia timeout d1_video_capture 2>/dev/null || true
   printf "\xfb\x14\x01\x20" > /dev/ttySGK1
   sleep 1
-  /tmp/d1_capture_v2 /tmp/d1_capture.h264
+  /tmp/d1_video_capture /tmp/d1_capture.h264 10
   printf "\xfb\x14\x00\x1f" > /dev/ttySGK1
 '
 ```

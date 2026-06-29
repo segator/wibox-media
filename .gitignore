@@ -8,6 +8,11 @@ patch.log
 *.pcap
 *.img
 
+/d1_*.h264
+/d1_*.mp4
+/d1_*.log
+/d1_video_capture
+
 arm-goke-linux-uclibcgnueabi
 
 .config

@@ -600,7 +600,7 @@ ioctl(*param_1, 0x40047687, &local_6c);
 Primeros 4 bytes del struct = `[b0, 02, 40, 02]` = `{width=0x02b0=688, height=0x0240=576}`.
 Confirmado vs trace de Sofia: arg en trace = `0x7ecf26a4` con primeros 4 bytes = `0x024002b0`.
 
-### Tests realizados (d1_capture_v2)
+### Tests realizados
 
 Programa compilado: SDK init (sys→vi→vout→venc→map_bsb) + raw fd para SYS ioctls.
 
@@ -612,17 +612,18 @@ Resultados sin éxito:
 
 **Estado actual:** EINVAL se produce en `SYS_MEM_Exit+0x16c` porque `sys_state[0xdc]` es NULL o incorrecto después de que `gadi_vi_open()` inicia VI pero no llega a establecer este puntero en el mismo contexto de proceso.
 
-### Archivos creados en esta sesión
+### Archivos de investigacion de esta sesion
 
 | Archivo | Descripción |
 |---------|-------------|
 | `/tmp/media.ko` | Copia del kernel module extraído del WiBox |
 | `/tmp/media_disasm.txt` | Disassembly completo (55382 líneas) |
-| `/home/aymerici/wibox-media/src/d1_capture.c` | Primer intento (SDK incorrecto) |
-| `/home/aymerici/wibox-media/src/d1_capture_v2.c` | SDK correcto + raw ioctl |
-| `/home/aymerici/wibox-media/src/d1_factory.c` | Sin SET_SRCBUF_FORMAT, usa factory config |
-| `/home/aymerici/wibox-media/d1_capture_v2` | Binario compilado ARM |
-| `/home/aymerici/wibox-media/d1_factory` | Binario factory (pendiente de test) |
+| `src/d1_capture.c` | Primer intento (retirado tras consolidar la prueba final) |
+| `src/d1_capture_v2.c` | SDK correcto + raw ioctl (renombrado a `src/d1_video_capture.c`) |
+| `src/d1_factory.c` | Experimento factory config (retirado) |
+
+Los binarios y capturas intermedias se limpiaron del repo. La unica prueba de video
+conservada en `src/` es `src/d1_video_capture.c`.
 
 ### Secuencia ioctl de Sofia (de sofia_ioctls_captured.log)
 
@@ -678,11 +679,13 @@ nuestra secuencia actual.
 - Problema anterior: filtrábamos stream_id==2 (sub-stream CIF)
 - Solución: filtrar stream_id==0 para obtener D1
 
-**Próximo test:** Ejecutar `d1_factory` después de Sofia warmup, capturando stream_id==0.
+**Siguiente test en ese momento:** ejecutar el enfoque factory después de Sofia warmup,
+capturando `stream_id==0`. Ese enfoque quedo reemplazado por la prueba consolidada
+`src/d1_video_capture.c`.
 
 ## Actualización 2026-06-29 — D1 confirmado sin Sofia
 
-**Resultado:** `src/d1_capture_v2.c` captura H.264 `stream_id == 0` y `ffprobe`
+**Resultado:** `src/d1_video_capture.c` captura H.264 `stream_id == 0` y `ffprobe`
 confirma resolución **688x576**:
 
 ```
@@ -694,12 +697,12 @@ coded_width=688
 coded_height=576
 ```
 
-Artefactos locales:
+Artefactos generados durante la validacion:
 
 | Archivo | Descripción |
 |---------|-------------|
-| `d1_capture_final_sid0.h264` | Captura H.264 D1 válida, `stream_id==0`, 688x576 |
-| `d1_capture_final.log` | Log de la ejecución confirmada |
+| `d1_capture_final_sid0.h264` | Captura H.264 D1 válida, `stream_id==0`, 688x576; retirado del repo tras documentar el resultado |
+| `d1_capture_final.log` | Log de la ejecución confirmada; retirado del repo tras documentar el resultado |
 
 Puntos técnicos que desbloquearon la captura:
 
@@ -766,9 +769,9 @@ Captura confirmada con llamada activa y fps corregido:
 
 | Archivo | Descripción |
 |---------|-------------|
-| `d1_capture_call_12s_fpsfix_sid0.h264` | Raw H.264 D1 con llamada activa |
-| `d1_capture_call_12s_fpsfix_25fps.mp4` | MP4 de inspección, 688x576 |
-| `d1_capture_call_12s_fpsfix.log` | Log de la prueba |
+| `d1_capture_call_12s_fpsfix_sid0.h264` | Raw H.264 D1 con llamada activa; retirado del repo tras documentar el resultado |
+| `d1_capture_call_12s_fpsfix_25fps.mp4` | MP4 de inspección, 688x576; retirado del repo tras documentar el resultado |
+| `d1_capture_call_12s_fpsfix.log` | Log de la prueba; retirado del repo tras documentar el resultado |
 
 Resultado de la prueba:
 
@@ -782,6 +785,19 @@ duration=14.44
 ```
 
 La documentación consolidada del flujo está en `docs/d1_video_capture.md`.
+
+## Actualización 2026-06-29 — limpieza de pruebas
+
+Se limpio `src/` para dejar una sola prueba de video mantenible:
+
+- `src/d1_video_capture.c`
+
+Se retiraron los PoC y experimentos antiguos (`d1_capture.c`, `d1_factory.c`,
+`sip_media_*`, `src/gadi_tests/*`) porque sus hallazgos ya estan incorporados en
+la documentacion y en la prueba consolidada.
+
+Siguiente fase: revisar el proyecto `wibox-audio`, reutilizar el trabajo de captura
+de audio ya existente e integrar audio + video como media SIP/RTP por llamada.
 
 ### Notas importantes para la próxima sesión
 
