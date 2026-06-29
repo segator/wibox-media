@@ -21,7 +21,7 @@
 #include "intercom.h"        // Our communication with the intercom
 #include "config.h"          // Configuration management
 
-#define THIS_FILE "sip_media"
+#define THIS_FILE "wibox-media-daemon"
 #define CONFIG_FILE "/mnt/mtd/sip_media.conf"
 #define LEGACY_CONFIG_FILE "/mnt/mtd/sip.conf"
 

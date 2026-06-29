@@ -159,6 +159,12 @@ Goal:
 - Keep compatibility symlinks or wrapper names only as needed during migration.
 - Do not remove `listener.sh` yet.
 
+Implementation:
+- Build `src/sip_media` as `wibox-media-daemon`.
+- Keep `sip_media` as a compatibility symlink during migration.
+- Keep the existing `/mnt/mtd/sip_media.conf` config name until the daemon
+  owns all subsystems.
+
 Verification:
 - Build succeeds.
 - Firmware includes `/usr/bin/wibox-media-daemon`.

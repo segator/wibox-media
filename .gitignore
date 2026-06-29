@@ -17,6 +17,7 @@ patch.log
 /src/audio_bridge/*.o
 /src/audio_bridge/*.so
 /src/sip_media/sip_media
+/src/sip_media/wibox-media-daemon
 /src/sip_media/*.o
 /src/video_rtp_bridge/video_rtp_bridge
 

@@ -7,17 +7,18 @@ the one-time Sofia boot warmup.
 
 - `src/audio_bridge/`: imports the working `wibox-audio` hardware bridge. It
   owns GADI audio input/output and exposes PCMA frames through named pipes.
-- `src/sip_media/`: imports the working SIP/RTP audio app and now advertises an
-  optional H.264 video media line in SDP.
+- `src/sip_media/`: current source directory for `wibox-media-daemon`, the
+  SIP/RTP media app. It still uses the historical directory name during the
+  migration.
 - `src/video_rtp_bridge/`: derived from the verified D1 capture test. It captures
   `stream_id == 0` and sends Annex-B H.264 as RTP/H264.
 
 Runtime processes:
 
 ```text
-audio_bridge  <-> /tmp/audio_from_intercom, /tmp/audio_to_intercom <-> sip_media
-sip_media     <-> RTP audio PCMA/8000 on port 8000
-sip_media     ->  forks video_rtp_bridge when SDP has a remote video port
+audio_bridge        <-> /tmp/audio_from_intercom, /tmp/audio_to_intercom <-> wibox-media-daemon
+wibox-media-daemon  <-> RTP audio PCMA/8000 on port 8000
+wibox-media-daemon  ->  forks video_rtp_bridge when SDP has a remote video port
 video_rtp_bridge -> RTP H.264/90000 on port 8002, payload type 96
 ```
 
@@ -25,17 +26,17 @@ video_rtp_bridge -> RTP H.264/90000 on port 8002, payload type 96
 
 1. Sofia warms up the video hardware once after boot.
 2. Sofia exits.
-3. `audio_bridge` and `sip_media` run under `app_watchdog.sh`.
+3. `audio_bridge` and `wibox-media-daemon` run under `app_watchdog.sh`.
 4. Doorbell event writes `DING` to `/tmp/pipe_sip`.
-5. `sip_media` sends SIP INVITE with:
+5. `wibox-media-daemon` sends SIP INVITE with:
    - `m=audio ... RTP/AVP 8`
    - `m=video ... RTP/AVP 96`
 6. When the call is established:
-   - `sip_media` sends `START_CALL` to `/dev/ttySGK1`;
+   - `wibox-media-daemon` sends `START_CALL` to `/dev/ttySGK1`;
    - audio threads start PCMA RTP;
    - `video_rtp_bridge` starts D1 capture and sends H.264 RTP.
 7. On hangup:
-   - `sip_media` stops `video_rtp_bridge`;
+   - `wibox-media-daemon` stops `video_rtp_bridge`;
    - audio threads stop;
    - `STOP_CALL` is sent to `/dev/ttySGK1`.
 
@@ -67,13 +68,14 @@ video_bridge_path=/usr/bin/video_rtp_bridge
 
 ## Verification Done
 
-- `audio_bridge`, `sip_media`, and `video_rtp_bridge` compile.
+- `audio_bridge`, `wibox-media-daemon`, and `video_rtp_bridge` compile.
 - Firmware image builds with all binaries and runtime libraries.
 - Real MicroSIP call verified with audio and H.264 video.
 - DTMF door unlock works in MicroSIP automatic mode after negotiating
   `telephone-event/8000`; SIP INFO is also accepted as a fallback.
 - WiBox smoke test:
-  - `sip_media` starts, binds SIP/RTP, creates `/tmp/pipe_sip`, exits cleanly.
+  - `wibox-media-daemon` starts, binds SIP/RTP, creates `/tmp/pipe_sip`,
+    exits cleanly.
   - `audio_bridge` starts, creates audio pipes, exits cleanly.
   - `video_rtp_bridge` usage path works.
 
