@@ -26,6 +26,18 @@ ding_message=DING
 serial_listener_enabled=1
 intercom_device=/dev/ttySGK1
 
+# MQTT / Home Assistant
+mqtt_enabled=1
+mqtt_host=127.0.0.1
+mqtt_user=
+mqtt_pass=
+mqtt_homeassistant_prefix=homeassistant
+mqtt_base_topic=
+mqtt_device_id=
+mqtt_device_name=
+mqtt_pub_path=/usr/bin/mosquitto_pub
+mqtt_sub_path=/usr/bin/mosquitto_sub
+
 # Audio Configuration
 audio_buffer_size=160
 pipe_retry_interval_ms=2000

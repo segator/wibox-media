@@ -68,6 +68,14 @@ video_payload_type=96
 video_bridge_path=/usr/bin/video_rtp_bridge
 serial_listener_enabled=1
 intercom_device=/dev/ttySGK1
+mqtt_enabled=1
+mqtt_host=127.0.0.1
+mqtt_user=
+mqtt_pass=
+mqtt_homeassistant_prefix=homeassistant
+mqtt_base_topic=
+mqtt_device_id=
+mqtt_device_name=
 ```
 
 ## Local Control API
@@ -95,11 +103,15 @@ button.
   - `wibox-media-daemon` starts, binds SIP/RTP, creates `/tmp/pipe_sip`,
     opens `/dev/ttySGK1`, and exits cleanly.
   - Control FIFO can inject UART frames for local testing.
+  - MQTT fake-client test publishes Home Assistant discovery and handles
+    `video/enabled/set`.
   - `audio_bridge` starts, creates audio pipes, exits cleanly.
   - `video_rtp_bridge` usage path works.
 
 ## Still To Verify
 
+- Real MQTT/Home Assistant discovery once broker credentials/ACL accept the
+  WiBox connection.
 - H.264 RTP compatibility with Asterisk/WebRTC/SIP-HASS.
 - Long-call stability and cleanup around the 90s MCU auto-stop behavior.
 - Daylight video quality; low light adds analog sensor/CVBS noise that bitrate

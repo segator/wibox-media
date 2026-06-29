@@ -214,6 +214,30 @@ Verification:
 - Sensors update on ring, call start, call end, unlock and video state.
 - MQTT reconnect/reboot behavior is sane.
 
+Implementation:
+- `wibox-media-daemon` owns MQTT/Home Assistant discovery and state publishing.
+- MQTT transport currently uses the bundled `mosquitto_pub`/`mosquitto_sub`
+  clients from daemon-owned code instead of the legacy shell scripts.
+- The daemon publishes the target Home Assistant model:
+  `button.open_door`, ringing/call/SIP/video binary sensors, media state,
+  last ring, last unlock, WiFi RSSI and `switch.video_enabled`.
+- The only primary door command is `wibox/<id>/door/open/set = PRESS`.
+- `video/enabled/set` updates the in-memory per-call video flag.
+- MQTT connection is probed before discovery is published; if the broker is
+  unavailable or rejects authentication, the daemon retries without spawning
+  a persistent `mosquitto_sub` loop.
+- Legacy scripts remain in the image until Phase 6 but are no longer started
+  on the `wibox-media-daemon` path.
+
+Verification:
+- `make build-media` succeeds.
+- WiBox fake-client test published Home Assistant discovery and initial state.
+- WiBox fake-client test consumed `video/enabled/set OFF` and updated daemon
+  state without crashing.
+- Real broker at `192.168.0.203` is reachable but rejected the provided
+  credentials during direct `mosquitto_pub/sub` tests, so real HA discovery is
+  pending corrected auth/ACL.
+
 ### Phase 4: Integrate Video Worker
 
 Goal:

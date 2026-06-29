@@ -51,6 +51,18 @@ void config_init_defaults(wibox_config_t* config) {
     config->serial_listener_enabled = 1;
     strcpy(config->intercom_device, "/dev/ttySGK1");
 
+    // MQTT/Home Assistant
+    config->mqtt_enabled = 1;
+    strcpy(config->mqtt_host, "127.0.0.1");
+    config->mqtt_user[0] = '\0';
+    config->mqtt_pass[0] = '\0';
+    strcpy(config->mqtt_homeassistant_prefix, "homeassistant");
+    config->mqtt_base_topic[0] = '\0';
+    config->mqtt_device_id[0] = '\0';
+    config->mqtt_device_name[0] = '\0';
+    strcpy(config->mqtt_pub_path, "/usr/bin/mosquitto_pub");
+    strcpy(config->mqtt_sub_path, "/usr/bin/mosquitto_sub");
+
     // Audio Configuration
     config->audio_buffer_size = 160;
     config->pipe_retry_interval_ms = 2000;
@@ -130,6 +142,35 @@ static int parse_config_line(const char* line, wibox_config_t* config) {
     } else if (strcmp(key, "intercom_device") == 0) {
         strncpy(config->intercom_device, value, sizeof(config->intercom_device) - 1);
         config->intercom_device[sizeof(config->intercom_device) - 1] = '\0';
+    } else if (strcmp(key, "mqtt_enabled") == 0) {
+        config->mqtt_enabled = atoi(value);
+    } else if (strcmp(key, "mqtt_host") == 0) {
+        strncpy(config->mqtt_host, value, sizeof(config->mqtt_host) - 1);
+        config->mqtt_host[sizeof(config->mqtt_host) - 1] = '\0';
+    } else if (strcmp(key, "mqtt_user") == 0) {
+        strncpy(config->mqtt_user, value, sizeof(config->mqtt_user) - 1);
+        config->mqtt_user[sizeof(config->mqtt_user) - 1] = '\0';
+    } else if (strcmp(key, "mqtt_pass") == 0) {
+        strncpy(config->mqtt_pass, value, sizeof(config->mqtt_pass) - 1);
+        config->mqtt_pass[sizeof(config->mqtt_pass) - 1] = '\0';
+    } else if (strcmp(key, "mqtt_homeassistant_prefix") == 0) {
+        strncpy(config->mqtt_homeassistant_prefix, value, sizeof(config->mqtt_homeassistant_prefix) - 1);
+        config->mqtt_homeassistant_prefix[sizeof(config->mqtt_homeassistant_prefix) - 1] = '\0';
+    } else if (strcmp(key, "mqtt_base_topic") == 0) {
+        strncpy(config->mqtt_base_topic, value, sizeof(config->mqtt_base_topic) - 1);
+        config->mqtt_base_topic[sizeof(config->mqtt_base_topic) - 1] = '\0';
+    } else if (strcmp(key, "mqtt_device_id") == 0) {
+        strncpy(config->mqtt_device_id, value, sizeof(config->mqtt_device_id) - 1);
+        config->mqtt_device_id[sizeof(config->mqtt_device_id) - 1] = '\0';
+    } else if (strcmp(key, "mqtt_device_name") == 0) {
+        strncpy(config->mqtt_device_name, value, sizeof(config->mqtt_device_name) - 1);
+        config->mqtt_device_name[sizeof(config->mqtt_device_name) - 1] = '\0';
+    } else if (strcmp(key, "mqtt_pub_path") == 0) {
+        strncpy(config->mqtt_pub_path, value, sizeof(config->mqtt_pub_path) - 1);
+        config->mqtt_pub_path[sizeof(config->mqtt_pub_path) - 1] = '\0';
+    } else if (strcmp(key, "mqtt_sub_path") == 0) {
+        strncpy(config->mqtt_sub_path, value, sizeof(config->mqtt_sub_path) - 1);
+        config->mqtt_sub_path[sizeof(config->mqtt_sub_path) - 1] = '\0';
     } else if (strcmp(key, "audio_buffer_size") == 0) {
         config->audio_buffer_size = atoi(value);
     } else if (strcmp(key, "pipe_retry_interval_ms") == 0) {
@@ -210,6 +251,15 @@ void config_print(const wibox_config_t* config) {
     printf("ding_message = %s\n", config->ding_message);
     printf("serial_listener_enabled = %d\n", config->serial_listener_enabled);
     printf("intercom_device = %s\n", config->intercom_device);
+    printf("mqtt_enabled = %d\n", config->mqtt_enabled);
+    printf("mqtt_host = %s\n", config->mqtt_host);
+    printf("mqtt_user = %s\n", config->mqtt_user);
+    printf("mqtt_homeassistant_prefix = %s\n", config->mqtt_homeassistant_prefix);
+    printf("mqtt_base_topic = %s\n", config->mqtt_base_topic);
+    printf("mqtt_device_id = %s\n", config->mqtt_device_id);
+    printf("mqtt_device_name = %s\n", config->mqtt_device_name);
+    printf("mqtt_pub_path = %s\n", config->mqtt_pub_path);
+    printf("mqtt_sub_path = %s\n", config->mqtt_sub_path);
     printf("audio_buffer_size = %d\n", config->audio_buffer_size);
     printf("pipe_retry_interval_ms = %d\n", config->pipe_retry_interval_ms);
     printf("pipe_retry_max_attempts = %d\n", config->pipe_retry_max_attempts);

@@ -26,6 +26,18 @@ typedef struct {
     int serial_listener_enabled;
     char intercom_device[256];
 
+    // MQTT/Home Assistant
+    int mqtt_enabled;
+    char mqtt_host[128];
+    char mqtt_user[128];
+    char mqtt_pass[128];
+    char mqtt_homeassistant_prefix[128];
+    char mqtt_base_topic[128];
+    char mqtt_device_id[128];
+    char mqtt_device_name[128];
+    char mqtt_pub_path[256];
+    char mqtt_sub_path[256];
+
     // Audio Configuration
     int audio_buffer_size;
     int pipe_retry_interval_ms;

@@ -21,6 +21,7 @@
 #include "sip_calling.h"     // Our unified SIP calling module
 #include "intercom.h"        // Our communication with the intercom
 #include "config.h"          // Configuration management
+#include "mqtt.h"            // MQTT/Home Assistant integration
 
 #define THIS_FILE "wibox-media-daemon"
 #define CONFIG_FILE "/mnt/mtd/sip_media.conf"
@@ -123,6 +124,9 @@ static void on_audio_ready(const char* remote_ip, int remote_rtp_port,
                            int remote_video_rtp_port, void* user_data);
 static void start_video_session(const char* remote_ip, int remote_video_port);
 static void stop_video_session(void);
+static void unlock_door(const char* source);
+static void mqtt_open_door_callback(void* user_data);
+static void mqtt_set_video_enabled_callback(int enabled, void* user_data);
 
 // Module to handle incoming requests and responses
 static pjsip_module mod_wibox = {
@@ -388,14 +392,8 @@ static void handle_dtmf_event(unsigned char event, unsigned char volume, unsigne
     PJ_LOG(3,(THIS_FILE, "DTMF DETECTED: '%c' (event=%d, volume=%d, duration=%d)",
               dtmf_char, event, volume, duration));
 
-    // Handle door unlock on hashtag
     if (dtmf_char == '#') {
-        PJ_LOG(3,(THIS_FILE, "Hashtag detected - unlocking door"));
-        if (intercom_send_command(INTERCOM_CMD_UNLOCK_DOOR) == 0) {
-            PJ_LOG(3,(THIS_FILE, "Door unlock command sent successfully"));
-        } else {
-            PJ_LOG(1,(THIS_FILE, "Failed to send door unlock command"));
-        }
+        unlock_door("dtmf");
     }
 }
 
@@ -514,6 +512,10 @@ static void on_call_state_change(sip_call_state_t old_state, sip_call_state_t ne
     if (new_state == SIP_CALL_STATE_ESTABLISHED && old_state != SIP_CALL_STATE_ESTABLISHED) {
         PJ_LOG(3,(THIS_FILE, "Call established - sending START_CALL to intercom"));
         intercom_send_command(INTERCOM_CMD_START_CALL);
+        mqtt_publish_call_active(1);
+        mqtt_publish_sip_call_active(1);
+        mqtt_publish_ringing(0);
+        mqtt_publish_media_state("established");
     }
 
     // Handle call termination - ONLY send STOP_CALL if we're ending an ESTABLISHED call
@@ -523,6 +525,10 @@ static void on_call_state_change(sip_call_state_t old_state, sip_call_state_t ne
         intercom_send_command(INTERCOM_CMD_STOP_CALL);
         stop_video_session();
         stop_audio_session();
+        mqtt_publish_call_active(0);
+        mqtt_publish_sip_call_active(0);
+        mqtt_publish_video_active(0);
+        mqtt_publish_media_state("idle");
     }
 
     // Handle non-established call termination (no intercom command needed)
@@ -531,6 +537,10 @@ static void on_call_state_change(sip_call_state_t old_state, sip_call_state_t ne
         PJ_LOG(3,(THIS_FILE, "Non-established call terminated - no intercom command needed"));
         stop_video_session();
         stop_audio_session();
+        mqtt_publish_call_active(0);
+        mqtt_publish_sip_call_active(0);
+        mqtt_publish_video_active(0);
+        mqtt_publish_media_state("idle");
     }
 }
 
@@ -600,6 +610,7 @@ static void start_video_session(const char* remote_ip, int remote_video_port) {
 
     PJ_LOG(3,(THIS_FILE, "Started video bridge pid=%d to %s:%d payload=%d",
               video_bridge_pid, remote_ip, remote_video_port, payload_type));
+    mqtt_publish_video_active(1);
 }
 
 static void stop_video_session(void) {
@@ -624,6 +635,40 @@ static void stop_video_session(void) {
     kill(video_bridge_pid, SIGKILL);
     waitpid(video_bridge_pid, &status, 0);
     video_bridge_pid = -1;
+    mqtt_publish_video_active(0);
+}
+
+static void unlock_door(const char* source) {
+    printf("Unlocking door from %s\n", source ? source : "unknown");
+    if (intercom_send_command(INTERCOM_CMD_UNLOCK_DOOR) == 0) {
+        printf("Door unlock command sent successfully\n");
+        mqtt_publish_last_unlock();
+    } else {
+        printf("Failed to send door unlock command\n");
+    }
+}
+
+static void mqtt_open_door_callback(void* user_data) {
+    (void)user_data;
+
+    if (sip_calling_is_call_active()) {
+        unlock_door("mqtt");
+        return;
+    }
+
+    printf("MQTT open door requested without active call; starting panel context\n");
+    intercom_send_command(INTERCOM_CMD_START_CALL);
+    usleep(500000);
+    unlock_door("mqtt");
+    usleep(1000000);
+    intercom_send_command(INTERCOM_CMD_STOP_CALL);
+}
+
+static void mqtt_set_video_enabled_callback(int enabled, void* user_data) {
+    (void)user_data;
+    app_config.video_enabled = enabled ? 1 : 0;
+    printf("MQTT video_enabled set to %d\n", app_config.video_enabled);
+    mqtt_publish_video_enabled(app_config.video_enabled);
 }
 
 static void handle_ding_trigger(const char* source) {
@@ -636,6 +681,10 @@ static void handle_ding_trigger(const char* source) {
         PJ_LOG(2,(THIS_FILE, "DING ignored - call already active"));
         return;
     }
+
+    mqtt_publish_ringing(1);
+    mqtt_publish_last_ring();
+    mqtt_publish_media_state("ringing");
 
     PJ_LOG(3,(THIS_FILE, "Making outgoing call due to %s", source ? source : "DING"));
     status = sip_calling_make_call();
@@ -913,10 +962,14 @@ static void handle_uart_frame(const unsigned char frame[4]) {
     case UART_CODE_HANG_UP_0:
     case UART_CODE_HANG_UP_1:
         report_alarm_event(2);
+        mqtt_publish_ringing(0);
+        mqtt_publish_media_state("idle");
         terminate_call_from_serial(def->name);
         break;
     case UART_CODE_CMD_STOP_RING:
         report_alarm_event(3);
+        mqtt_publish_ringing(0);
+        mqtt_publish_media_state("idle");
         terminate_call_from_serial(def->name);
         break;
     case UART_CODE_CMD_RESET:
@@ -925,6 +978,7 @@ static void handle_uart_frame(const unsigned char frame[4]) {
         break;
     case UART_CODE_START_CALL:
         PJ_LOG(3,(THIS_FILE, "Intercom call line is active"));
+        mqtt_publish_call_active(1);
         break;
     case UART_CODE_PUSH_STATE_0:
     case UART_CODE_PUSH_STATE_1:
@@ -1617,6 +1671,7 @@ int main(int argc, char *argv[]) {
     pj_caching_pool cp;
     char local_ip[16];
     sip_call_config_t call_config;
+    mqtt_callbacks_t mqtt_callbacks;
 
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
@@ -1637,6 +1692,11 @@ int main(int argc, char *argv[]) {
     // Get and display local IP
     get_local_ip(local_ip, sizeof(local_ip));
     printf("Wibox SIP Media Client - Local IP: %s\n", local_ip);
+
+    memset(&mqtt_callbacks, 0, sizeof(mqtt_callbacks));
+    mqtt_callbacks.open_door = mqtt_open_door_callback;
+    mqtt_callbacks.set_video_enabled = mqtt_set_video_enabled_callback;
+    mqtt_init(&app_config, local_ip, &mqtt_callbacks, NULL);
 
     // Install signal handlers
     signal(SIGINT, signal_handler);
@@ -1755,6 +1815,9 @@ int main(int argc, char *argv[]) {
     if (start_serial_monitoring() < 0) {
         printf("Warning: Failed to start serial monitoring\n");
     }
+    if (mqtt_start() < 0) {
+        printf("Warning: Failed to start MQTT integration\n");
+    }
 
     printf("Wibox SIP client ready. Listening on %s:%d, RTP on %s:%d\n",
            local_ip, app_config.sip_port, local_ip, app_config.rtp_port);
@@ -1780,6 +1843,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Cleanup
+    mqtt_stop();
     stop_serial_monitoring();
     stop_ding_monitoring();
     stop_video_session();
