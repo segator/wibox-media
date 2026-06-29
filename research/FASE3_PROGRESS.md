@@ -266,3 +266,37 @@ reaches the driver.
 Option A: Accept R10973 limitations — use SDK for init + direct ioctl for frame/bitrate
 Option B: Find R13210 SDK
 Option C: Extract full VENC state machine from Sofia and replicate internal handle
+
+## 2026-06-29 — Raw fd breakthrough!
+
+### Key finding: raw /dev/gk_video fd works better than SDK VENC
+
+Opening `/dev/gk_video` directly (without gadi_venc_init/open) makes MORE
+ioctls work. The SDK's gadi_venc_open appears to initialize state that BLOCKS
+subsequent configuration ioctls.
+
+| IoCTL | Via SDK handle | Via raw fd | 
+|-------|---------------|------------|
+| 0x80047670 GET_CHIP_INFO | ✅ | ✅ |
+| 0x40046533 SET_FRAME_INTERVAL | ✅ | ✅ |
+| 0x40046538 SET_BITRATE | ✅ | ✅ |
+| 0xc0046540 GETSET_H264 | ✅ | ✅ |
+| 0x4004653f SET_H264 | ❌ EINVAL | ✅ ret=0 |
+| 0xc004652a START_STREAM | not tested | ✅ ret=0 |
+| 0x40047687 SET_SRCBUF | ❌ EINVAL | not tested yet |
+
+### New approach: bypass gadi_venc_open completely
+
+Sequence:
+1. gadi_sys_init() + gadi_vi_init/open + gadi_vout_init/open  (SDK works)
+2. open("/dev/gk_video")  (raw fd)
+3. ioctl GET_CHIP_INFO → raw fd
+4. ioctl GET/SET_SYS_RESOURCE → raw fd  
+5. ioctl SET_FRAME_INTERVAL → raw fd
+6. ioctl SET_BITRATE → raw fd
+7. ioctl GETSET_H264 → raw fd
+8. ioctl SET_H264 → raw fd
+9. ioctl START_STREAM → raw fd
+
+This bypasses the entire libadi VENC layer. The kernel modules handle
+everything through the raw device fd.
