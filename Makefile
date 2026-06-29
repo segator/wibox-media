@@ -1,4 +1,5 @@
 .DEFAULT_GOAL := help
+.PHONY: docker docker-shell build build-inside build-media extract patch pack clean help
 
 BUILD_DIR = cramfs
 FILE = mtd4
@@ -13,8 +14,16 @@ docker-shell:
 	docker run --rm -it -v $(PWD):/build $(IMAGE) bash
 
 # ── build firmware image ───────────────────────────────────────────
-build:
+build: build-media
 	docker run --rm -v $(PWD):/build $(IMAGE) make build-inside
+
+build-media:
+	./build-audio_bridge.sh
+	./build-sip_media.sh
+	./build-video_rtp_bridge.sh
+	rm -f src/audio_bridge/audio_bridge src/audio_bridge/*.o
+	rm -f src/sip_media/sip_media src/sip_media/*.o
+	rm -f src/video_rtp_bridge/video_rtp_bridge
 
 build-inside: extract patch pack
 
@@ -44,6 +53,9 @@ pack:
 clean:
 	rm -f include/sbin/dropbearmulti include/sbin/dropbear include/sbin/dropbearkey include/sbin/dropbearconvert
 	rm -f include/bin/mosquitto_sub include/bin/mosquitto_pub include/bin/scp include/bin/dbclient
+	rm -f src/audio_bridge/audio_bridge src/audio_bridge/*.o
+	rm -f src/sip_media/sip_media src/sip_media/*.o
+	rm -f src/video_rtp_bridge/video_rtp_bridge
 	rm -rf $(BUILD_DIR) patch.log 2>/dev/null
 
 # ── help ───────────────────────────────────────────────────────────
@@ -51,7 +63,8 @@ help:
 	@echo "WiBox Firmware Builder"
 	@echo ""
 	@echo "  1. make docker    Build Docker build-tool (one-time)"
-	@echo "  2. make build     Build firmware image (cramfs)"
+	@echo "  2. make build     Build media binaries and firmware image (cramfs)"
+	@echo "  3. make build-media  Build audio_bridge, sip_media, video_rtp_bridge"
 	@echo ""
 	@echo "  Prerequisite: factory mtd4 backup at ./mtd4"
 	@echo "  Output:        release/image-YYMMDD-HHMM"

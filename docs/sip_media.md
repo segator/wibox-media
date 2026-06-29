@@ -42,14 +42,13 @@ video_rtp_bridge -> RTP H.264/90000 on port 8002, payload type 96
 ## Build
 
 ```sh
-./build-audio_bridge.sh
-./build-sip_media.sh
-./build-video_rtp_bridge.sh
+make build-media
 make build
 ```
 
 `video_rtp_bridge` uses `SDK_DIR`, defaulting to
 `$HOME/config/GK710X_LinuxSDK_v2.0.0`.
+`make build` runs `make build-media` before packing the cramfs image.
 
 ## Configuration
 
@@ -70,6 +69,9 @@ video_bridge_path=/usr/bin/video_rtp_bridge
 
 - `audio_bridge`, `sip_media`, and `video_rtp_bridge` compile.
 - Firmware image builds with all binaries and runtime libraries.
+- Real MicroSIP call verified with audio and H.264 video.
+- DTMF door unlock works in MicroSIP automatic mode after negotiating
+  `telephone-event/8000`; SIP INFO is also accepted as a fallback.
 - WiBox smoke test:
   - `sip_media` starts, binds SIP/RTP, creates `/tmp/pipe_sip`, exits cleanly.
   - `audio_bridge` starts, creates audio pipes, exits cleanly.
@@ -77,8 +79,7 @@ video_bridge_path=/usr/bin/video_rtp_bridge
 
 ## Still To Verify
 
-- End-to-end SIP call with SDP video negotiation.
 - H.264 RTP compatibility with Asterisk/WebRTC/SIP-HASS.
-- Whether the receiver accepts raw RTP/H264 payload type 96 with
-  `packetization-mode=1`.
 - Long-call stability and cleanup around the 90s MCU auto-stop behavior.
+- Daylight video quality; low light adds analog sensor/CVBS noise that bitrate
+  cannot remove.

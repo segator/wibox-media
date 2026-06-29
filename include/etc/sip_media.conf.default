@@ -17,7 +17,6 @@ video_bridge_path=/usr/bin/video_rtp_bridge
 # Named Pipes Configuration
 audio_ai_pipe=/tmp/audio_from_intercom
 audio_ao_pipe=/tmp/audio_to_intercom
-# Name needs to be kept in sync with 'wibox/include/bin/listener.sh'
 sip_listen_pipe=/tmp/pipe_sip
 
 # Message Configuration
