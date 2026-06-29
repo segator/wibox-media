@@ -210,27 +210,23 @@ Verification:
 
 Implementation:
 - `wibox-media-daemon` owns MQTT/Home Assistant discovery and state publishing.
-- MQTT transport currently uses the bundled `mosquitto_pub`/`mosquitto_sub`
-  clients from daemon-owned code instead of the legacy shell scripts.
+- MQTT transport is implemented in the daemon with a built-in MQTT 3.1.1
+  client over plain TCP; no `mosquitto_pub/sub` binaries are packaged.
 - The daemon publishes the target Home Assistant model:
   `button.open_door`, ringing/call/SIP/video binary sensors, media state,
   last ring, last unlock, WiFi RSSI and `switch.video_enabled`.
 - The only primary door command is `wibox/<id>/door/open/set = PRESS`.
 - `video/enabled/set` updates the in-memory per-call video flag.
-- MQTT connection is probed before discovery is published; if the broker is
-  unavailable or rejects authentication, the daemon retries without spawning
-  a persistent `mosquitto_sub` loop.
-- Legacy scripts remain in the image until Phase 6 but are no longer started
-  on the `wibox-media-daemon` path.
+- If the broker is unavailable or rejects authentication, the daemon reconnects
+  without spawning helper processes.
+- Legacy scripts are removed from the production image in Phase 6.
 
 Verification:
 - `make build-media` succeeds.
 - WiBox fake-client test published Home Assistant discovery and initial state.
 - WiBox fake-client test consumed `video/enabled/set OFF` and updated daemon
   state without crashing.
-- Real broker is reachable but rejected the provided runtime credentials during
-  direct `mosquitto_pub/sub` tests, so real HA discovery is pending corrected
-  auth/ACL.
+- Real broker verification is pending corrected runtime auth/ACL.
 
 ### Phase 4: Integrate Video Worker
 
@@ -308,6 +304,17 @@ Verification:
 - Firmware boots without web UI/scripts.
 - SSH and MQTT/Home Assistant remain usable.
 - No boot errors from missing files.
+
+Implementation:
+- Removed web UI files from `include/web`.
+- Removed legacy `listener*.sh`, `mqtt_*.sh`, `heartbeat_mqtt.sh` and
+  packaged `mosquitto_pub/sub` clients from the generated image.
+- Removed the mosquitto-client build patch; MQTT is now daemon-native.
+
+Verification:
+- `make build-media` succeeds with the native MQTT client.
+- Local MQTT mock test exercises CONNECT, SUBSCRIBE, retained state publish,
+  Home Assistant discovery publish, `door/open/set` and `video/enabled/set`.
 
 ## Production Invariants
 

@@ -57,8 +57,6 @@ void config_init_defaults(wibox_config_t* config) {
     config->mqtt_base_topic[0] = '\0';
     config->mqtt_device_id[0] = '\0';
     config->mqtt_device_name[0] = '\0';
-    strcpy(config->mqtt_pub_path, "/usr/bin/mosquitto_pub");
-    strcpy(config->mqtt_sub_path, "/usr/bin/mosquitto_sub");
 
     // Audio Configuration
     config->audio_buffer_size = 160;
@@ -159,11 +157,9 @@ static int parse_config_line(const char* line, wibox_config_t* config) {
         strncpy(config->mqtt_device_name, value, sizeof(config->mqtt_device_name) - 1);
         config->mqtt_device_name[sizeof(config->mqtt_device_name) - 1] = '\0';
     } else if (strcmp(key, "mqtt_pub_path") == 0) {
-        strncpy(config->mqtt_pub_path, value, sizeof(config->mqtt_pub_path) - 1);
-        config->mqtt_pub_path[sizeof(config->mqtt_pub_path) - 1] = '\0';
+        return 0; /* legacy shell-client config, ignored */
     } else if (strcmp(key, "mqtt_sub_path") == 0) {
-        strncpy(config->mqtt_sub_path, value, sizeof(config->mqtt_sub_path) - 1);
-        config->mqtt_sub_path[sizeof(config->mqtt_sub_path) - 1] = '\0';
+        return 0; /* legacy shell-client config, ignored */
     } else if (strcmp(key, "audio_buffer_size") == 0) {
         config->audio_buffer_size = atoi(value);
     } else if (strcmp(key, "audio_chip_gpio") == 0) {
@@ -250,8 +246,6 @@ void config_print(const wibox_config_t* config) {
     printf("mqtt_base_topic = %s\n", config->mqtt_base_topic);
     printf("mqtt_device_id = %s\n", config->mqtt_device_id);
     printf("mqtt_device_name = %s\n", config->mqtt_device_name);
-    printf("mqtt_pub_path = %s\n", config->mqtt_pub_path);
-    printf("mqtt_sub_path = %s\n", config->mqtt_sub_path);
     printf("audio_buffer_size = %d\n", config->audio_buffer_size);
     printf("audio_chip_gpio = %d\n", config->audio_chip_gpio);
     printf("============================\n");

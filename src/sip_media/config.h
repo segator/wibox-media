@@ -32,8 +32,6 @@ typedef struct {
     char mqtt_base_topic[128];
     char mqtt_device_id[128];
     char mqtt_device_name[128];
-    char mqtt_pub_path[256];
-    char mqtt_sub_path[256];
 
     // Audio Configuration
     int audio_buffer_size;

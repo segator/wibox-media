@@ -9,8 +9,7 @@ if echo "$0" | grep -q -E temp; then
 fi
 
 if [ -z "${IS_TEMP}" ]; then
-  /usr/bin/listener.sh stop
-  kill `cat /var/run/httpd.pid`
+  [ -f /var/run/httpd.pid ] && kill `cat /var/run/httpd.pid`
   killall udhcpc wpa_supplicant crond
 fi
 

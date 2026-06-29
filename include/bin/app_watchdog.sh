@@ -12,7 +12,7 @@ LOG_MAX_SIZE="${5:-100}"  # KB
 # Validation
 if [ -z "$APP_NAME" ] || [ -z "$APP_PATH" ]; then
     echo "Usage: $0 <app_name> <app_path> [log_file] [restart_delay] [max_log_size_kb]"
-    echo "Example: $0 audio_bridge /usr/bin/audio_bridge"
+    echo "Example: $0 wibox-media-daemon /usr/bin/wibox-media-daemon"
     echo "Example: $0 my_app /usr/bin/my_app /var/log/custom.log 10 200"
     exit 1
 fi

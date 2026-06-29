@@ -8,7 +8,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/wait.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/select.h>
+#include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -23,8 +27,6 @@ typedef struct {
     char base_topic[128];
     char device_id[128];
     char device_name[128];
-    char pub_path[256];
-    char sub_path[256];
     char local_ip[64];
     int video_enabled;
     mqtt_callbacks_t callbacks;
@@ -32,34 +34,12 @@ typedef struct {
     pthread_t thread;
     int running;
     int connected;
-    pid_t sub_pid;
+    int sock;
+    pthread_mutex_t io_mutex;
+    unsigned short packet_id;
 } mqtt_state_t;
 
 static mqtt_state_t mqtt_state;
-
-static void shell_quote(const char* input, char* out, size_t out_size) {
-    size_t pos = 0;
-    const char* p;
-
-    if (out_size == 0) return;
-    out[pos++] = '\'';
-
-    for (p = input ? input : ""; *p && pos + 5 < out_size; p++) {
-        if (*p == '\'') {
-            out[pos++] = '\'';
-            out[pos++] = '\\';
-            out[pos++] = '\'';
-            out[pos++] = '\'';
-        } else {
-            out[pos++] = *p;
-        }
-    }
-
-    if (pos + 1 < out_size) {
-        out[pos++] = '\'';
-    }
-    out[pos] = '\0';
-}
 
 static void normalize_id(const char* input, char* out, size_t out_size) {
     size_t i;
@@ -100,82 +80,270 @@ static void get_hostname(char* out, size_t out_size) {
     }
 }
 
-static void build_common_opts(char* out, size_t out_size, const char* client_suffix) {
-    char q_id[192];
-    char q_host[192];
-    char q_user[192];
-    char q_pass[192];
-    char client_id[192];
+static int parse_host_port(const char* input, char* host, size_t host_size, int* port) {
+    const char* colon;
 
-    snprintf(client_id, sizeof(client_id), "wibox_%s_%s",
-             mqtt_state.device_id, client_suffix ? client_suffix : "daemon");
-    shell_quote(client_id, q_id, sizeof(q_id));
-    shell_quote(mqtt_state.host, q_host, sizeof(q_host));
-    snprintf(out, out_size, "-I %s -h %s", q_id, q_host);
-
-    if (mqtt_state.user[0]) {
-        shell_quote(mqtt_state.user, q_user, sizeof(q_user));
-        strncat(out, " -u ", out_size - strlen(out) - 1);
-        strncat(out, q_user, out_size - strlen(out) - 1);
-    }
-    if (mqtt_state.pass[0]) {
-        shell_quote(mqtt_state.pass, q_pass, sizeof(q_pass));
-        strncat(out, " -P ", out_size - strlen(out) - 1);
-        strncat(out, q_pass, out_size - strlen(out) - 1);
-    }
-}
-
-static int run_command(const char* command) {
-    int rc;
-
-    rc = system(command);
-    if (rc == -1) {
-        printf("%s: system failed: %s\n", MQTT_FILE, strerror(errno));
+    if (!input || !host || host_size == 0 || !port) {
         return -1;
     }
-    if (WIFEXITED(rc)) {
-        return WEXITSTATUS(rc);
+
+    *port = 1883;
+    colon = strrchr(input, ':');
+    if (colon && colon != input && strchr(colon + 1, ':') == NULL) {
+        size_t len = (size_t)(colon - input);
+        if (len >= host_size) len = host_size - 1;
+        memcpy(host, input, len);
+        host[len] = '\0';
+        *port = atoi(colon + 1);
+        if (*port <= 0) *port = 1883;
+    } else {
+        strncpy(host, input, host_size - 1);
+        host[host_size - 1] = '\0';
     }
-    return -1;
+
+    return host[0] ? 0 : -1;
+}
+
+static int socket_write_all(int fd, const unsigned char* data, size_t len) {
+    size_t sent = 0;
+
+    while (sent < len) {
+        ssize_t n = send(fd, data + sent, len - sent, 0);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (n == 0) return -1;
+        sent += (size_t)n;
+    }
+    return 0;
+}
+
+static int socket_read_all(int fd, unsigned char* data, size_t len) {
+    size_t got = 0;
+
+    while (got < len) {
+        ssize_t n = recv(fd, data + got, len - got, 0);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (n == 0) return -1;
+        got += (size_t)n;
+    }
+    return 0;
+}
+
+static int mqtt_encode_remaining(unsigned char* out, size_t out_size, int len) {
+    int pos = 0;
+
+    do {
+        unsigned char encoded = (unsigned char)(len % 128);
+        len /= 128;
+        if (len > 0) encoded |= 128;
+        if ((size_t)pos >= out_size) return -1;
+        out[pos++] = encoded;
+    } while (len > 0);
+
+    return pos;
+}
+
+static int mqtt_append_u16(unsigned char* buf, size_t buf_size, size_t* pos, unsigned short value) {
+    if (*pos + 2 > buf_size) return -1;
+    buf[(*pos)++] = (unsigned char)(value >> 8);
+    buf[(*pos)++] = (unsigned char)(value & 0xff);
+    return 0;
+}
+
+static int mqtt_append_bytes(unsigned char* buf, size_t buf_size, size_t* pos,
+                             const unsigned char* data, size_t len) {
+    if (*pos + len > buf_size) return -1;
+    memcpy(buf + *pos, data, len);
+    *pos += len;
+    return 0;
+}
+
+static int mqtt_append_str(unsigned char* buf, size_t buf_size, size_t* pos, const char* value) {
+    size_t len = value ? strlen(value) : 0;
+    if (len > 65535) return -1;
+    if (mqtt_append_u16(buf, buf_size, pos, (unsigned short)len) < 0) return -1;
+    return mqtt_append_bytes(buf, buf_size, pos, (const unsigned char*)(value ? value : ""), len);
+}
+
+static int mqtt_send_packet(int packet_type_flags, const unsigned char* payload, size_t payload_len) {
+    unsigned char header[5];
+    int rem_len_size;
+
+    if (mqtt_state.sock < 0) {
+        return -1;
+    }
+
+    header[0] = (unsigned char)packet_type_flags;
+    rem_len_size = mqtt_encode_remaining(header + 1, sizeof(header) - 1, (int)payload_len);
+    if (rem_len_size < 0) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&mqtt_state.io_mutex);
+    if (socket_write_all(mqtt_state.sock, header, (size_t)rem_len_size + 1) < 0 ||
+        socket_write_all(mqtt_state.sock, payload, payload_len) < 0) {
+        pthread_mutex_unlock(&mqtt_state.io_mutex);
+        return -1;
+    }
+    pthread_mutex_unlock(&mqtt_state.io_mutex);
+    return 0;
+}
+
+static int mqtt_tcp_connect(void) {
+    char host[128];
+    char port_str[16];
+    int port;
+    struct addrinfo hints;
+    struct addrinfo* res = NULL;
+    struct addrinfo* it;
+    int fd = -1;
+
+    if (parse_host_port(mqtt_state.host, host, sizeof(host), &port) < 0) {
+        return -1;
+    }
+    snprintf(port_str, sizeof(port_str), "%d", port);
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    if (getaddrinfo(host, port_str, &hints, &res) != 0) {
+        printf("%s: DNS/host lookup failed for %s:%s\n", MQTT_FILE, host, port_str);
+        return -1;
+    }
+
+    for (it = res; it; it = it->ai_next) {
+        fd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
+        if (fd < 0) continue;
+        if (connect(fd, it->ai_addr, it->ai_addrlen) == 0) {
+            break;
+        }
+        close(fd);
+        fd = -1;
+    }
+
+    freeaddrinfo(res);
+    if (fd < 0) {
+        printf("%s: TCP connect failed to %s:%s\n", MQTT_FILE, host, port_str);
+    }
+    return fd;
+}
+
+static int mqtt_read_packet(unsigned char* type_flags, unsigned char* payload,
+                            size_t payload_size, int* payload_len) {
+    unsigned char byte;
+    int multiplier = 1;
+    int remaining = 0;
+
+    if (socket_read_all(mqtt_state.sock, type_flags, 1) < 0) {
+        return -1;
+    }
+
+    do {
+        if (socket_read_all(mqtt_state.sock, &byte, 1) < 0) {
+            return -1;
+        }
+        remaining += (byte & 127) * multiplier;
+        multiplier *= 128;
+        if (multiplier > 128 * 128 * 128) {
+            return -1;
+        }
+    } while (byte & 128);
+
+    if ((size_t)remaining > payload_size) {
+        unsigned char tmp[128];
+        int left = remaining;
+        while (left > 0) {
+            int chunk = left > (int)sizeof(tmp) ? (int)sizeof(tmp) : left;
+            if (socket_read_all(mqtt_state.sock, tmp, (size_t)chunk) < 0) return -1;
+            left -= chunk;
+        }
+        return -1;
+    }
+
+    if (socket_read_all(mqtt_state.sock, payload, (size_t)remaining) < 0) {
+        return -1;
+    }
+    *payload_len = remaining;
+    return 0;
+}
+
+static int mqtt_connect_session(void) {
+    unsigned char payload[1024];
+    unsigned char response[8];
+    unsigned char type;
+    size_t pos = 0;
+    int len = 0;
+    char client_id[192];
+    char will_topic[256];
+    unsigned char flags = 0x02; /* clean session */
+
+    mqtt_state.sock = mqtt_tcp_connect();
+    if (mqtt_state.sock < 0) {
+        return -1;
+    }
+
+    snprintf(client_id, sizeof(client_id), "wibox_%s_daemon", mqtt_state.device_id);
+    snprintf(will_topic, sizeof(will_topic), "%s", mqtt_state.base_topic);
+
+    if (mqtt_state.user[0]) flags |= 0x80;
+    if (mqtt_state.pass[0]) flags |= 0x40;
+    flags |= 0x20; /* will retain */
+    flags |= 0x04; /* will flag, QoS 0 */
+
+    if (mqtt_append_str(payload, sizeof(payload), &pos, "MQTT") < 0 ||
+        mqtt_append_bytes(payload, sizeof(payload), &pos, (const unsigned char*)"\x04", 1) < 0 ||
+        mqtt_append_bytes(payload, sizeof(payload), &pos, &flags, 1) < 0 ||
+        mqtt_append_u16(payload, sizeof(payload), &pos, 60) < 0 ||
+        mqtt_append_str(payload, sizeof(payload), &pos, client_id) < 0 ||
+        mqtt_append_str(payload, sizeof(payload), &pos, will_topic) < 0 ||
+        mqtt_append_str(payload, sizeof(payload), &pos, "offline") < 0 ||
+        (mqtt_state.user[0] && mqtt_append_str(payload, sizeof(payload), &pos, mqtt_state.user) < 0) ||
+        (mqtt_state.pass[0] && mqtt_append_str(payload, sizeof(payload), &pos, mqtt_state.pass) < 0)) {
+        close(mqtt_state.sock);
+        mqtt_state.sock = -1;
+        return -1;
+    }
+
+    if (mqtt_send_packet(0x10, payload, pos) < 0 ||
+        mqtt_read_packet(&type, response, sizeof(response), &len) < 0) {
+        printf("%s: CONNECT exchange failed\n", MQTT_FILE);
+        close(mqtt_state.sock);
+        mqtt_state.sock = -1;
+        return -1;
+    }
+
+    if (type != 0x20 || len < 2 || response[1] != 0) {
+        printf("%s: CONNACK rejected type=0x%02x len=%d code=%d\n",
+               MQTT_FILE, type, len, len >= 2 ? response[1] : -1);
+        close(mqtt_state.sock);
+        mqtt_state.sock = -1;
+        return -1;
+    }
+
+    return 0;
 }
 
 static int mqtt_publish_raw(const char* topic, const char* payload, int retain) {
-    char q_pub[320];
-    char q_topic[256];
-    char q_payload[2048];
-    char opts[512];
-    char cmd[4096];
+    unsigned char packet[2300];
+    size_t pos = 0;
 
-    if (!mqtt_state.enabled || !topic || !payload) {
+    if (!mqtt_state.enabled || !mqtt_state.connected || !topic || !payload) {
         return -1;
     }
 
-    shell_quote(mqtt_state.pub_path, q_pub, sizeof(q_pub));
-    shell_quote(topic, q_topic, sizeof(q_topic));
-    shell_quote(payload, q_payload, sizeof(q_payload));
-    build_common_opts(opts, sizeof(opts), "pub");
-
-    snprintf(cmd, sizeof(cmd), "%s %s %s -t %s -m %s >/dev/null 2>&1",
-             q_pub, retain ? "-r" : "", opts, q_topic, q_payload);
-    return run_command(cmd);
-}
-
-static int mqtt_check_connection(void) {
-    char q_pub[320];
-    char q_topic[256];
-    char opts[512];
-    char cmd[2048];
-
-    if (!mqtt_state.enabled) {
+    if (mqtt_append_str(packet, sizeof(packet), &pos, topic) < 0 ||
+        mqtt_append_bytes(packet, sizeof(packet), &pos,
+                          (const unsigned char*)payload, strlen(payload)) < 0) {
         return -1;
     }
 
-    shell_quote(mqtt_state.pub_path, q_pub, sizeof(q_pub));
-    shell_quote(mqtt_state.base_topic, q_topic, sizeof(q_topic));
-    build_common_opts(opts, sizeof(opts), "probe");
-    snprintf(cmd, sizeof(cmd), "%s %s -t %s -m init >/dev/null 2>&1",
-             q_pub, opts, q_topic);
-    return run_command(cmd);
+    return mqtt_send_packet(retain ? 0x31 : 0x30, packet, pos);
 }
 
 static void topic_path(char* out, size_t out_size, const char* suffix) {
@@ -416,19 +584,10 @@ static int payload_is_off(const char* payload) {
          strcasecmp(payload, "0") == 0);
 }
 
-static void handle_mqtt_line(char* line) {
-    char* payload;
-    char topic[256];
+static void handle_mqtt_message(const char* topic, const char* payload) {
     char expected[256];
 
-    line[strcspn(line, "\r\n")] = '\0';
-    payload = strchr(line, ' ');
-    if (!payload) {
-        return;
-    }
-    *payload++ = '\0';
-    strncpy(topic, line, sizeof(topic) - 1);
-    topic[sizeof(topic) - 1] = '\0';
+    if (!topic || !payload) return;
 
     if (strcmp(topic, mqtt_state.base_topic) == 0) {
         if (strcasecmp(payload, "CONFIG") == 0 || strcasecmp(payload, "INIT") == 0) {
@@ -459,75 +618,114 @@ static void handle_mqtt_line(char* line) {
     }
 }
 
-static FILE* start_subscriber(void) {
-    int pipefd[2];
-    pid_t pid;
-    char opts[512];
-    char q_sub[320];
-    char q_base[256];
-    char q_will[256];
-    char will_topic[256];
+static int mqtt_subscribe_topics(void) {
+    unsigned char packet[512];
+    unsigned char response[64];
+    unsigned char type;
+    size_t pos = 0;
+    int len = 0;
+    char wildcard[256];
 
-    if (pipe(pipefd) != 0) {
-        printf("%s: pipe failed: %s\n", MQTT_FILE, strerror(errno));
-        return NULL;
+    if (++mqtt_state.packet_id == 0) mqtt_state.packet_id = 1;
+    snprintf(wildcard, sizeof(wildcard), "%s/#", mqtt_state.base_topic);
+
+    if (mqtt_append_u16(packet, sizeof(packet), &pos, mqtt_state.packet_id) < 0 ||
+        mqtt_append_str(packet, sizeof(packet), &pos, mqtt_state.base_topic) < 0 ||
+        mqtt_append_bytes(packet, sizeof(packet), &pos, (const unsigned char*)"\x00", 1) < 0 ||
+        mqtt_append_str(packet, sizeof(packet), &pos, wildcard) < 0 ||
+        mqtt_append_bytes(packet, sizeof(packet), &pos, (const unsigned char*)"\x00", 1) < 0) {
+        return -1;
     }
 
-    pid = fork();
-    if (pid < 0) {
-        printf("%s: fork failed: %s\n", MQTT_FILE, strerror(errno));
-        close(pipefd[0]);
-        close(pipefd[1]);
-        return NULL;
+    if (mqtt_send_packet(0x82, packet, pos) < 0 ||
+        mqtt_read_packet(&type, response, sizeof(response), &len) < 0 ||
+        type != 0x90 || len < 3 || response[2] == 0x80) {
+        return -1;
     }
 
-    if (pid == 0) {
-        char cmd[2048];
+    return 0;
+}
 
-        dup2(pipefd[1], STDOUT_FILENO);
-        close(pipefd[0]);
-        close(pipefd[1]);
+static void mqtt_handle_publish(const unsigned char* payload, int len) {
+    unsigned short topic_len;
+    char topic[256];
+    char message[512];
+    int message_len;
 
-        shell_quote(mqtt_state.sub_path, q_sub, sizeof(q_sub));
-        shell_quote(mqtt_state.base_topic, q_base, sizeof(q_base));
-        snprintf(will_topic, sizeof(will_topic), "%s/#", mqtt_state.base_topic);
-        shell_quote(will_topic, q_will, sizeof(q_will));
-        build_common_opts(opts, sizeof(opts), "sub");
-        snprintf(cmd, sizeof(cmd),
-                 "exec %s %s -v -k 300 --will-topic %s --will-payload offline "
-                 "--will-retain -t %s -t %s",
-                 q_sub, opts, q_base, q_base, q_will);
-        execl("/bin/sh", "sh", "-c", cmd, (char*)NULL);
-        _exit(127);
+    if (len < 2) return;
+    topic_len = (unsigned short)((payload[0] << 8) | payload[1]);
+    if (topic_len == 0 || topic_len >= sizeof(topic) || 2 + topic_len > len) return;
+
+    memcpy(topic, payload + 2, topic_len);
+    topic[topic_len] = '\0';
+
+    message_len = len - 2 - topic_len;
+    if (message_len < 0) return;
+    if (message_len >= (int)sizeof(message)) message_len = (int)sizeof(message) - 1;
+    memcpy(message, payload + 2 + topic_len, (size_t)message_len);
+    message[message_len] = '\0';
+
+    handle_mqtt_message(topic, message);
+}
+
+static int mqtt_process_once(void) {
+    fd_set rfds;
+    struct timeval tv;
+    int ret;
+    unsigned char type;
+    unsigned char payload[2048];
+    int len = 0;
+
+    FD_ZERO(&rfds);
+    FD_SET(mqtt_state.sock, &rfds);
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+
+    ret = select(mqtt_state.sock + 1, &rfds, NULL, NULL, &tv);
+    if (ret < 0) {
+        return errno == EINTR ? 0 : -1;
+    }
+    if (ret == 0) {
+        return 0;
     }
 
-    close(pipefd[1]);
-    mqtt_state.sub_pid = pid;
-    return fdopen(pipefd[0], "r");
+    if (mqtt_read_packet(&type, payload, sizeof(payload), &len) < 0) {
+        return -1;
+    }
+
+    switch (type & 0xf0) {
+    case 0x30:
+        mqtt_handle_publish(payload, len);
+        break;
+    case 0xd0: /* PINGRESP */
+        break;
+    default:
+        break;
+    }
+
+    return 0;
 }
 
 static void* mqtt_thread_func(void* arg) {
-    while (mqtt_state.running) {
-        FILE* fp;
-        char line[512];
+    (void)arg;
 
-        if (mqtt_check_connection() != 0) {
+    while (mqtt_state.running) {
+        time_t last_ping;
+
+        if (mqtt_connect_session() != 0 || mqtt_subscribe_topics() != 0) {
             mqtt_state.connected = 0;
+            if (mqtt_state.sock >= 0) {
+                close(mqtt_state.sock);
+                mqtt_state.sock = -1;
+            }
             printf("%s: broker unavailable or unauthorized, retrying later\n", MQTT_FILE);
             sleep(30);
             continue;
         }
+
         mqtt_state.connected = 1;
-
-        fp = start_subscriber();
-        if (!fp) {
-            mqtt_state.connected = 0;
-            sleep(5);
-            continue;
-        }
-
-        printf("%s: subscriber started pid=%d topic=%s\n",
-               MQTT_FILE, mqtt_state.sub_pid, mqtt_state.base_topic);
+        last_ping = time(NULL);
+        printf("%s: connected topic=%s\n", MQTT_FILE, mqtt_state.base_topic);
 
         mqtt_publish_discovery();
         mqtt_publish_online();
@@ -538,19 +736,26 @@ static void* mqtt_thread_func(void* arg) {
         mqtt_publish_media_state("idle");
         mqtt_publish_video_enabled(mqtt_state.video_enabled);
 
-        while (mqtt_state.running && fgets(line, sizeof(line), fp)) {
-            handle_mqtt_line(line);
+        while (mqtt_state.running) {
+            time_t now = time(NULL);
+            if (mqtt_process_once() < 0) {
+                break;
+            }
+            if (now - last_ping >= 30) {
+                if (mqtt_send_packet(0xc0, (const unsigned char*)"", 0) < 0) {
+                    break;
+                }
+                last_ping = now;
+            }
         }
 
-        fclose(fp);
         mqtt_state.connected = 0;
-        if (mqtt_state.sub_pid > 0) {
-            int status;
-            waitpid(mqtt_state.sub_pid, &status, WNOHANG);
-            mqtt_state.sub_pid = -1;
+        if (mqtt_state.sock >= 0) {
+            close(mqtt_state.sock);
+            mqtt_state.sock = -1;
         }
         if (mqtt_state.running) {
-            printf("%s: subscriber stopped, retrying\n", MQTT_FILE);
+            printf("%s: connection stopped, retrying\n", MQTT_FILE);
             sleep(5);
         }
     }
@@ -563,7 +768,8 @@ int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
     char hostname[128];
 
     memset(&mqtt_state, 0, sizeof(mqtt_state));
-    mqtt_state.sub_pid = -1;
+    mqtt_state.sock = -1;
+    pthread_mutex_init(&mqtt_state.io_mutex, NULL);
 
     if (!app_config || !app_config->mqtt_enabled) {
         mqtt_state.enabled = 0;
@@ -575,8 +781,6 @@ int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
     strncpy(mqtt_state.user, app_config->mqtt_user, sizeof(mqtt_state.user) - 1);
     strncpy(mqtt_state.pass, app_config->mqtt_pass, sizeof(mqtt_state.pass) - 1);
     strncpy(mqtt_state.ha_prefix, app_config->mqtt_homeassistant_prefix, sizeof(mqtt_state.ha_prefix) - 1);
-    strncpy(mqtt_state.pub_path, app_config->mqtt_pub_path, sizeof(mqtt_state.pub_path) - 1);
-    strncpy(mqtt_state.sub_path, app_config->mqtt_sub_path, sizeof(mqtt_state.sub_path) - 1);
     strncpy(mqtt_state.local_ip, local_ip ? local_ip : "0.0.0.0", sizeof(mqtt_state.local_ip) - 1);
     mqtt_state.video_enabled = app_config->video_enabled;
 
@@ -590,13 +794,13 @@ int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
     if (app_config->mqtt_device_name[0]) {
         strncpy(mqtt_state.device_name, app_config->mqtt_device_name, sizeof(mqtt_state.device_name) - 1);
     } else {
-        snprintf(mqtt_state.device_name, sizeof(mqtt_state.device_name), "WiBox %s", hostname);
+        snprintf(mqtt_state.device_name, sizeof(mqtt_state.device_name), "WiBox %.121s", hostname);
     }
 
     if (app_config->mqtt_base_topic[0]) {
         strncpy(mqtt_state.base_topic, app_config->mqtt_base_topic, sizeof(mqtt_state.base_topic) - 1);
     } else {
-        snprintf(mqtt_state.base_topic, sizeof(mqtt_state.base_topic), "wibox/%s", hostname);
+        snprintf(mqtt_state.base_topic, sizeof(mqtt_state.base_topic), "wibox/%.121s", hostname);
     }
 
     if (callbacks) {
@@ -613,12 +817,6 @@ int mqtt_start(void) {
     if (!mqtt_state.enabled) {
         printf("%s: disabled\n", MQTT_FILE);
         return 0;
-    }
-
-    if (access(mqtt_state.pub_path, X_OK) != 0 || access(mqtt_state.sub_path, X_OK) != 0) {
-        printf("%s: mosquitto clients not available, MQTT disabled\n", MQTT_FILE);
-        mqtt_state.enabled = 0;
-        return -1;
     }
 
     mqtt_state.running = 1;
@@ -639,9 +837,12 @@ void mqtt_stop(void) {
     mqtt_publish_offline();
     mqtt_state.connected = 0;
     mqtt_state.running = 0;
-    if (mqtt_state.sub_pid > 0) {
-        kill(mqtt_state.sub_pid, SIGTERM);
+    if (mqtt_state.sock >= 0) {
+        shutdown(mqtt_state.sock, SHUT_RDWR);
     }
     pthread_join(mqtt_state.thread, NULL);
-    mqtt_state.sub_pid = -1;
+    if (mqtt_state.sock >= 0) {
+        close(mqtt_state.sock);
+        mqtt_state.sock = -1;
+    }
 }

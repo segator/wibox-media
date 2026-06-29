@@ -1,27 +1,22 @@
 # Using Wibox patch
 
-Once you have successfully installed this patch, you will have access to a
-Web UI to control the device, similar as the Android app.
-
-Just access the IP address of the Wibox device (HTTP port 80).
-
-![](./docs/img/webui.png)
+This firmware replaces the old web/script control path with
+`wibox-media-daemon`, exposed primarily through SIP and MQTT/Home Assistant.
 
 ## MQTT / Home Assistant
 
-NOTE: MQTT binaries are still not available.
-
-If you build `mosquitto-client` tools, you can use MQTT to manage the device
-via Home Assistant. (tested with plain MQTT port 1883)
+MQTT/Home Assistant is handled directly by `wibox-media-daemon` using plain
+MQTT on port 1883.
 
 ![](./docs/img/homeassistant.png)
 
-Create a file `/mnt/mtd/mqtt.conf` with the following data:
+Configure MQTT in `/mnt/mtd/sip_media.conf`:
 
 ```bash
-MQTT_HOST=192.168.10.2
-MQTT_USER=mqtt
-MQTT_PASS=password
+mqtt_enabled=1
+mqtt_host=192.168.10.2
+mqtt_user=mqtt
+mqtt_pass=password
 ```
 
 ## Keep application working
@@ -38,16 +33,6 @@ You can also update or create `/mnt/mtd/post.sh` with **executable permissions**
 
 ```bash
 #!/bin/sh
-
-for NAME in listener listener_mqtt; do
-  if [ -e "/tmp/${NAME}.pid" ]; then
-    kill `cat /tmp/${NAME}.pid`
-  fi
-done
-
-for NAME in head mosquitto_sub listener_mqtt.sh; do
-killall ${NAME}
-done
 
 # run factory program
 /usr/run-orig.sh

@@ -32,8 +32,6 @@ mqtt_homeassistant_prefix=homeassistant
 mqtt_base_topic=
 mqtt_device_id=
 mqtt_device_name=
-mqtt_pub_path=/usr/bin/mosquitto_pub
-mqtt_sub_path=/usr/bin/mosquitto_sub
 
 # Audio Configuration
 audio_buffer_size=160

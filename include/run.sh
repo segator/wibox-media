@@ -58,9 +58,6 @@ UDID=$(dd if=/dev/mtdblock6 skip=324 count=12 bs=1 2>/dev/null)
 [ -z "${UDID}" ] && UDID="000000000000"
 echo "IDS7938${UDID:8:4}" > /proc/sys/kernel/hostname
 
-#web
-cd /usr/web && ./setup.sh
-
 #wifi
 cp /usr/sbin/wifi_conf/* /var/wifi/
 cp /usr/sbin/hostapd.conf /var/wifi
@@ -135,10 +132,7 @@ fi
 if [ -x "/usr/bin/wibox-media-daemon" ]; then
   /usr/bin/app_watchdog.sh wibox-media-daemon /usr/bin/wibox-media-daemon &
 elif [ -x "/usr/bin/sip_media" ]; then
-  /usr/bin/listener.sh &
   /usr/bin/app_watchdog.sh sip_media /usr/bin/sip_media &
-else
-  /usr/bin/listener.sh &
 fi
 
 [ -f "/mnt/mtd/post.sh" ] && /mnt/mtd/post.sh

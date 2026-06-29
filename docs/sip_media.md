@@ -26,6 +26,7 @@ wibox-media-daemon  <-> GADI AI/AO audio hardware
 wibox-media-daemon  <-> RTP audio PCMA/8000 on port 8000
 wibox-media-daemon  ->  forks in-daemon video worker when SDP has a remote video port
 video worker        -> RTP H.264/90000 on port 8002
+wibox-media-daemon  <-> MQTT/Home Assistant over native MQTT 3.1.1 TCP client
 ```
 
 ## Call Flow
@@ -127,6 +128,10 @@ bounded local test, and then stops audio and the panel context.
     audio cleanly without creating `/tmp/audio_from_intercom` or
     `/tmp/audio_to_intercom`.
   - `VIDEO_TEST` starts the embedded worker and captures D1 `stream_id == 0`.
+- Real MicroSIP call on the direct GADI audio build verified audio, H.264
+  video, automatic-mode DTMF `#`, door unlock and cleanup on BYE.
+- Local MQTT mock test verifies the native MQTT client without mosquitto
+  binaries.
 
 ## Still To Verify
 
@@ -136,4 +141,3 @@ bounded local test, and then stops audio and the panel context.
 - Long-call stability and cleanup around the 90s MCU auto-stop behavior.
 - Daylight video quality; low light adds analog sensor/CVBS noise that bitrate
   cannot remove.
-- Real MicroSIP call on the direct GADI audio build.

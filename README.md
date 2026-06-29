@@ -4,8 +4,8 @@ Build custom firmware for the Fermax WiBox (GK710x SoC) intercom.
 
 ## Prerequisites
 
-- **Factory `mtd4` backup** — copy it as `mtd4` in this directory.  
-  This file contains `/usr/` (cramfs): Sofia binary, web UI, WiFi binaries, etc.  
+- **Factory `mtd4` backup** — copy it as `mtd4` in this directory.
+  This file contains `/usr/` (cramfs): Sofia binary, WiFi binaries, etc.
   The build extracts it, applies our patches, and repacks it.
 - **Docker** — to build the toolchain and firmware in a reproducible environment.
 
@@ -28,7 +28,7 @@ make build
 
 This runs inside Docker:
 1. Extracts factory `mtd4` → `cramfs/`
-2. Applies patch scripts (dropbear, mosquitto, GPIO, custom run.sh, etc.)
+2. Applies patch scripts (dropbear, GPIO, custom run.sh, etc.)
 3. Packs everything back into a cramfs image
 
 Output: `release/image-YYMMDD-HHMM` (~4.8 MB, must fit within the 11 MB mtd4 partition).
@@ -37,11 +37,11 @@ Output: `release/image-YYMMDD-HHMM` (~4.8 MB, must fit within the 11 MB mtd4 par
 
 | Component | Description |
 |-----------|-------------|
-| **run.sh** | Custom boot script: GPIO setup, WiFi, SSH (dropbear), Sofia launch |
+| **run.sh** | Custom boot script: GPIO setup, WiFi, SSH (dropbear), Sofia warmup, media daemon |
 | **sofia_trace** | Ptrace wrapper — catches SEGVs + logs all ioctls to `/mnt/mtd/iotrace_boot.log` |
 | **dropbear** | SSH server for remote access |
-| **mosquitto** | MQTT clients for Home Assistant integration |
-| **gpio.sh, listener.sh, heartbeat.sh** | WiBox service scripts |
+| **wibox-media-daemon** | SIP, RTP audio/video, serial intercom state, DTMF, MQTT/Home Assistant |
+| **gpio.sh, heartbeat.sh** | WiBox service scripts |
 
 ## Flash to WiBox
 
