@@ -48,6 +48,7 @@ typedef struct {
     char remote_ip[16];
     int remote_rtp_port;
     int remote_video_rtp_port;
+    int remote_video_payload_type;
 
     // Timing
     time_t call_start_time;
@@ -154,7 +155,8 @@ pj_status_t sip_calling_create_sdp_offer(pj_pool_t* pool,
  */
 pj_status_t sip_calling_parse_sdp_answer(const char* sdp_content,
                                          int* remote_rtp_port,
-                                         int* remote_video_rtp_port);
+                                         int* remote_video_rtp_port,
+                                         int* remote_video_payload_type);
 
 /**
  * Cleanup SIP calling module

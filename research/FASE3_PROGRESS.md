@@ -804,13 +804,13 @@ de audio ya existente e integrar audio + video como media SIP/RTP por llamada.
 Se importo el trabajo funcional de `wibox-audio` dentro de este repo:
 
 - `src/audio_bridge/`
-- `src/sip_audio/`
+- `src/sip_media/`
 
 Y se añadio:
 
 - `src/video_rtp_bridge/`
 
-`sip_audio` ahora anuncia video en SDP:
+`sip_media` ahora anuncia video en SDP:
 
 ```text
 m=video 8002 RTP/AVP 96
@@ -821,23 +821,23 @@ a=sendonly
 
 Cuando la llamada SIP queda establecida:
 
-1. `sip_audio` envia `START_CALL` por `/dev/ttySGK1`.
+1. `sip_media` envia `START_CALL` por `/dev/ttySGK1`.
 2. Arranca los hilos de audio PCMA existentes.
 3. Lanza `video_rtp_bridge <remote_ip> <remote_video_port> 8002 96`.
 4. `video_rtp_bridge` captura `stream_id==0` y envia H.264 D1 por RTP.
 
 Al colgar:
 
-1. `sip_audio` para `video_rtp_bridge`.
+1. `sip_media` para `video_rtp_bridge`.
 2. Para audio.
 3. Envia `STOP_CALL` por `/dev/ttySGK1`.
 
 Verificado:
 
-- Compilan `audio_bridge`, `sip_audio`, `video_rtp_bridge`.
+- Compilan `audio_bridge`, `sip_media`, `video_rtp_bridge`.
 - `make build` genera firmware con binarios, configs y `libadi.so`/`libap.so`.
 - Smoke test en WiBox:
-  - `sip_audio` arranca, bindea SIP/RTP, crea `/tmp/pipe_sip` y sale limpio con timeout.
+  - `sip_media` arranca, bindea SIP/RTP, crea `/tmp/pipe_sip` y sale limpio con timeout.
   - `audio_bridge` arranca, crea pipes de audio y sale limpio con timeout.
 
 Pendiente:

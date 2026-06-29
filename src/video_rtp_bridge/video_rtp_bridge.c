@@ -424,7 +424,7 @@ static void set_h264_config_stream(int stream_id, uint32_t cbr, uint32_t min, ui
     cfg[48] = 1;                      /* idrInterval: Sofia default */
     cfg[49] = 0;                      /* gopModel */
     cfg[50] = 4;                      /* internal field set by Sofia wrapper */
-    cfg[54] = 0;                      /* profile: Sofia default public value */
+    cfg[54] = 0;                      /* GK SDK default: produces D1 stream_id 0 reliably */
     *(uint32_t *)(cfg + 4) = cbr;     /* selected bitrate copied by wrapper */
     cfg[110] = 0;                     /* reEncMode */
 

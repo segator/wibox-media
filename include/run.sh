@@ -131,8 +131,8 @@ echo "IDS7938${UDID:8:4}" > /proc/sys/kernel/hostname
 
 /usr/bin/listener.sh &
 
-if [ ! -f "/mnt/mtd/sip.conf" ] && [ -f "/etc/sip.conf.default" ]; then
-  cp /etc/sip.conf.default /mnt/mtd/sip.conf
+if [ ! -f "/mnt/mtd/sip_media.conf" ] && [ -f "/etc/sip_media.conf.default" ]; then
+  cp /etc/sip_media.conf.default /mnt/mtd/sip_media.conf
 fi
 if [ ! -f "/mnt/mtd/audio.conf" ] && [ -f "/etc/audio.conf.default" ]; then
   cp /etc/audio.conf.default /mnt/mtd/audio.conf
@@ -141,8 +141,8 @@ fi
 if [ -x "/usr/bin/audio_bridge" ]; then
   /usr/bin/app_watchdog.sh audio_bridge /usr/bin/audio_bridge &
 fi
-if [ -x "/usr/bin/sip_audio" ]; then
-  /usr/bin/app_watchdog.sh sip_audio /usr/bin/sip_audio &
+if [ -x "/usr/bin/sip_media" ]; then
+  /usr/bin/app_watchdog.sh sip_media /usr/bin/sip_media &
 fi
 
 [ -f "/mnt/mtd/post.sh" ] && /mnt/mtd/post.sh

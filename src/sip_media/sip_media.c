@@ -21,8 +21,9 @@
 #include "intercom.h"        // Our communication with the intercom
 #include "config.h"          // Configuration management
 
-#define THIS_FILE "sip_audio"
-#define CONFIG_FILE "/mnt/mtd/sip.conf"
+#define THIS_FILE "sip_media"
+#define CONFIG_FILE "/mnt/mtd/sip_media.conf"
+#define LEGACY_CONFIG_FILE "/mnt/mtd/sip.conf"
 
 #define RTP_PAYLOAD_DTMF 101    // Common DTMF payload type
 #define DTMF_EVENT_0     0
@@ -387,52 +388,59 @@ static void handle_dtmf_event(unsigned char event, unsigned char volume, unsigne
 }
 
 static pj_bool_t parse_rtp_dtmf_event(unsigned char* rtp_packet, ssize_t packet_len) {
+    unsigned char payload_type;
+    int csrc_count;
+    int header_len;
+    unsigned int rtp_timestamp;
+    unsigned char event;
+    unsigned char flags_volume;
+    unsigned char end_bit;
+    unsigned char volume;
+    unsigned short duration;
+    time_t now;
+
     if (packet_len < 16) return PJ_FALSE;  // Too short for RTP + DTMF event
 
-    // Check RTP header
-    unsigned char payload_type = rtp_packet[1] & 0x7F;
-
-    if (payload_type == RTP_PAYLOAD_DTMF) {
-        // Extract RTP timestamp for duplicate detection
-        unsigned int rtp_timestamp = (rtp_packet[4] << 24) | (rtp_packet[5] << 16) | (rtp_packet[6] << 8) | rtp_packet[7];
-
-        // RFC2833 DTMF event packet format (after 12-byte RTP header):
-        // 0: Event (0-15)
-        // 1: E|R|Volume (1 bit End, 1 bit Reserved, 6 bits Volume)
-        // 2-3: Duration (16 bits, network byte order)
-
-        unsigned char event = rtp_packet[12];
-        unsigned char flags_volume = rtp_packet[13];
-        unsigned short duration = (rtp_packet[14] << 8) | rtp_packet[15];
-
-        unsigned char end_bit = (flags_volume & 0x80) >> 7;
-        unsigned char volume = flags_volume & 0x3F;
-
-        // Only process on end of event to avoid duplicates
-        if (end_bit) {
-            time_t now = time(NULL);
-
-            // Check for duplicates: same event, same timestamp, within 2 seconds
-            if (event == last_dtmf_event &&
-                rtp_timestamp == last_dtmf_timestamp &&
-                (now - last_dtmf_time) < 2) {
-                // This is a duplicate, ignore it
-                return PJ_TRUE;
-            }
-
-            // Store this event info for duplicate detection
-            last_dtmf_event = event;
-            last_dtmf_timestamp = rtp_timestamp;
-            last_dtmf_time = now;
-
-            // Process the DTMF event
-            handle_dtmf_event(event, volume, duration);
-        }
-
-        return PJ_TRUE;  // This was a DTMF packet
+    payload_type = rtp_packet[1] & 0x7F;
+    if (payload_type != RTP_PAYLOAD_DTMF) {
+        return PJ_FALSE;
     }
 
-    return PJ_FALSE;  // Not a DTMF packet
+    csrc_count = rtp_packet[0] & 0x0F;
+    header_len = 12 + (csrc_count * 4);
+    if (rtp_packet[0] & 0x10) {
+        int ext_words;
+        if (packet_len < header_len + 4) return PJ_TRUE;
+        ext_words = (rtp_packet[header_len + 2] << 8) | rtp_packet[header_len + 3];
+        header_len += 4 + ext_words * 4;
+    }
+    if (packet_len < header_len + 4) return PJ_TRUE;
+
+    rtp_timestamp = (rtp_packet[4] << 24) | (rtp_packet[5] << 16) |
+                    (rtp_packet[6] << 8) | rtp_packet[7];
+
+    event = rtp_packet[header_len];
+    flags_volume = rtp_packet[header_len + 1];
+    duration = (rtp_packet[header_len + 2] << 8) | rtp_packet[header_len + 3];
+    end_bit = (flags_volume & 0x80) >> 7;
+    volume = flags_volume & 0x3F;
+
+    PJ_LOG(3,(THIS_FILE, "RTP DTMF packet: event=%u end=%u volume=%u duration=%u ts=%u",
+              event, end_bit, volume, duration, rtp_timestamp));
+
+    now = time(NULL);
+    if (event == last_dtmf_event &&
+        rtp_timestamp == last_dtmf_timestamp &&
+        (now - last_dtmf_time) < 2) {
+        return PJ_TRUE;
+    }
+
+    last_dtmf_event = event;
+    last_dtmf_timestamp = rtp_timestamp;
+    last_dtmf_time = now;
+    handle_dtmf_event(event, volume, duration);
+
+    return PJ_TRUE;
 }
 
 // Unified SIP calling callback implementations
@@ -471,14 +479,17 @@ static void on_audio_ready(const char* remote_ip, int remote_rtp_port,
         PJ_LOG(3,(THIS_FILE, "Audio session already active - ignoring duplicate"));
         return;
     }
-    start_video_session(remote_ip, remote_video_rtp_port);
     start_audio_session(remote_ip, remote_rtp_port);
+    PJ_LOG(3,(THIS_FILE, "Audio session start returned; starting video"));
+    start_video_session(remote_ip, remote_video_rtp_port);
 }
 
 static void start_video_session(const char* remote_ip, int remote_video_port) {
     char remote_port_arg[16];
     char local_port_arg[16];
     char payload_type_arg[16];
+    const sip_call_session_t *session;
+    int payload_type;
 
     if (!app_config.video_enabled) {
         PJ_LOG(3,(THIS_FILE, "Video disabled by configuration"));
@@ -493,9 +504,15 @@ static void start_video_session(const char* remote_ip, int remote_video_port) {
         return;
     }
 
+    session = sip_calling_get_session();
+    payload_type = app_config.video_payload_type;
+    if (session && session->remote_video_payload_type > 0) {
+        payload_type = session->remote_video_payload_type;
+    }
+
     snprintf(remote_port_arg, sizeof(remote_port_arg), "%d", remote_video_port);
     snprintf(local_port_arg, sizeof(local_port_arg), "%d", app_config.video_rtp_port);
-    snprintf(payload_type_arg, sizeof(payload_type_arg), "%d", app_config.video_payload_type);
+    snprintf(payload_type_arg, sizeof(payload_type_arg), "%d", payload_type);
 
     video_bridge_pid = fork();
     if (video_bridge_pid < 0) {
@@ -504,13 +521,20 @@ static void start_video_session(const char* remote_ip, int remote_video_port) {
         return;
     }
     if (video_bridge_pid == 0) {
+        int log_fd = open("/tmp/video_rtp_bridge.log",
+                          O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (log_fd >= 0) {
+            dup2(log_fd, STDOUT_FILENO);
+            dup2(log_fd, STDERR_FILENO);
+            close(log_fd);
+        }
         execl(app_config.video_bridge_path, app_config.video_bridge_path,
               remote_ip, remote_port_arg, local_port_arg, payload_type_arg, (char*)NULL);
         _exit(127);
     }
 
-    PJ_LOG(3,(THIS_FILE, "Started video bridge pid=%d to %s:%d",
-              video_bridge_pid, remote_ip, remote_video_port));
+    PJ_LOG(3,(THIS_FILE, "Started video bridge pid=%d to %s:%d payload=%d",
+              video_bridge_pid, remote_ip, remote_video_port, payload_type));
 }
 
 static void stop_video_session(void) {
@@ -1225,8 +1249,12 @@ int main(int argc, char *argv[]) {
 
     // Load configuration first
     if (config_load(CONFIG_FILE, &app_config) < 0) {
-        printf("Warning: Configuration load failed, using defaults\n");
-        config_init_defaults(&app_config);
+        printf("Warning: %s load failed, trying legacy %s\n",
+               CONFIG_FILE, LEGACY_CONFIG_FILE);
+        if (config_load(LEGACY_CONFIG_FILE, &app_config) < 0) {
+            printf("Warning: Configuration load failed, using defaults\n");
+            config_init_defaults(&app_config);
+        }
     }
 
     // Print loaded configuration
@@ -1234,7 +1262,7 @@ int main(int argc, char *argv[]) {
 
     // Get and display local IP
     get_local_ip(local_ip, sizeof(local_ip));
-    printf("Wibox SIP Client with Audio - Local IP: %s\n", local_ip);
+    printf("Wibox SIP Media Client - Local IP: %s\n", local_ip);
 
     // Install signal handlers
     signal(SIGINT, signal_handler);

@@ -1,7 +1,7 @@
 ################################################################################
 ################################################################################
 ##
-## Makefile -- makefile for sip_audio
+## Makefile -- makefile for sip_media
 ##
 ## (C) Copyright 2025 by TODO
 ##
@@ -46,7 +46,7 @@ endif
 # source files
 ################################################################################
 
-SOURCES = sip_audio.c sip_calling.c intercom.c config.c
+SOURCES = sip_media.c sip_calling.c intercom.c config.c
 
 ################################################################################
 # define user cc flags
@@ -79,7 +79,7 @@ endif
 # define target name
 ################################################################################
 
-PROGRAM = sip_audio
+PROGRAM = sip_media
 
 ################################################################################
 # Deployment configuration
@@ -107,7 +107,7 @@ endif
 OBJECTS = $(SOURCES:.c=.o)
 
 # Header dependencies
-sip_audio.o: sip_audio.c sip_calling.h intercom.h config.h
+sip_media.o: sip_media.c sip_calling.h intercom.h config.h
 sip_calling.o: sip_calling.c sip_calling.h
 intercom.o: intercom.c intercom.h
 config.o: config.c config.h

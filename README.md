@@ -91,7 +91,7 @@ Current summary:
   then send the stop-call command.
 - Verified output is H.264 Main profile at 688x576.
 
-## SIP Audio + Video
+## SIP Media + Video
 
 The imported audio stack and first audio+video RTP integration are documented in
 [`docs/sip_media.md`](docs/sip_media.md).

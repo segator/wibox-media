@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 
 #define THIS_FILE "sip_calling"
@@ -23,6 +24,7 @@ static pj_status_t send_bye_request(void);
 static void clear_session_data(void);
 static void store_dialog_info_from_invite(pjsip_rx_data *rdata);
 static void store_dialog_info_from_response(pjsip_rx_data *rdata);
+static int parse_h264_payload_type(const char *sdp_content);
 
 pj_status_t sip_calling_init(const sip_call_config_t* call_config,
                             pjsip_endpoint* endpt,
@@ -42,6 +44,7 @@ pj_status_t sip_calling_init(const sip_call_config_t* call_config,
     current_session.direction = SIP_CALL_DIRECTION_NONE;
     current_session.remote_rtp_port = 8000;  // Default
     current_session.remote_video_rtp_port = 0;
+    current_session.remote_video_payload_type = 0;
 
     PJ_LOG(3,(THIS_FILE, "Unified SIP calling initialized - target: %s, timeout: %ds",
               config.target_uri, config.call_timeout_seconds));
@@ -100,6 +103,7 @@ static void clear_session_data(void) {
     current_session.direction = SIP_CALL_DIRECTION_NONE;
     current_session.remote_rtp_port = 8000;
     current_session.remote_video_rtp_port = 0;
+    current_session.remote_video_payload_type = 0;
     current_session.invite_cseq = 0;
 
     // Clear all string data
@@ -240,6 +244,7 @@ pj_status_t sip_calling_handle_incoming_invite(pjsip_rx_data *rdata) {
     pjsip_msg_body *body;
     int remote_rtp_port = 8000;
     int remote_video_rtp_port = 0;
+    int remote_video_payload_type = 0;
     char local_tag_buf[32];
 
     PJ_LOG(3,(THIS_FILE, "=== HANDLING INCOMING INVITE ==="));
@@ -260,6 +265,8 @@ pj_status_t sip_calling_handle_incoming_invite(pjsip_rx_data *rdata) {
                 status = sip_calling_create_sdp_offer(tdata->pool, config.local_ip,
                                                      config.local_rtp_port,
                                                      config.local_video_rtp_port,
+                                                     current_session.remote_video_payload_type ?
+                                                     current_session.remote_video_payload_type :
                                                      config.video_payload_type,
                                                      &sdp_str);
                 if (status == PJ_SUCCESS) {
@@ -310,11 +317,16 @@ pj_status_t sip_calling_handle_incoming_invite(pjsip_rx_data *rdata) {
     if (rdata->msg_info.msg->body && rdata->msg_info.msg->body->data) {
         PJ_LOG(3,(THIS_FILE, "SDP body found, length: %d", rdata->msg_info.msg->body->len));
         char *sdp_content = (char*)rdata->msg_info.msg->body->data;
-        sip_calling_parse_sdp_answer(sdp_content, &remote_rtp_port, &remote_video_rtp_port);
+        PJ_LOG(3,(THIS_FILE, "Remote SDP:\n%.*s",
+                  (int)rdata->msg_info.msg->body->len, sdp_content));
+        sip_calling_parse_sdp_answer(sdp_content, &remote_rtp_port,
+                                     &remote_video_rtp_port,
+                                     &remote_video_payload_type);
         current_session.remote_rtp_port = remote_rtp_port;
         current_session.remote_video_rtp_port = remote_video_rtp_port;
-        PJ_LOG(3,(THIS_FILE, "Parsed remote RTP ports: audio=%d video=%d",
-                  remote_rtp_port, remote_video_rtp_port));
+        current_session.remote_video_payload_type = remote_video_payload_type;
+        PJ_LOG(3,(THIS_FILE, "Parsed remote RTP: audio=%d video=%d h264_payload=%d",
+                  remote_rtp_port, remote_video_rtp_port, remote_video_payload_type));
     }
 
     // Generate our local tag
@@ -354,6 +366,8 @@ pj_status_t sip_calling_handle_incoming_invite(pjsip_rx_data *rdata) {
     status = sip_calling_create_sdp_offer(tdata->pool, config.local_ip,
                                          config.local_rtp_port,
                                          config.local_video_rtp_port,
+                                         current_session.remote_video_payload_type ?
+                                         current_session.remote_video_payload_type :
                                          config.video_payload_type,
                                          &sdp_str);
     if (status != PJ_SUCCESS) {
@@ -799,7 +813,8 @@ pj_bool_t sip_calling_handle_response(pjsip_rx_data *rdata) {
             char *sdp_content = (char*)rdata->msg_info.msg->body->data;
             sip_calling_parse_sdp_answer(sdp_content,
                                          &current_session.remote_rtp_port,
-                                         &current_session.remote_video_rtp_port);
+                                         &current_session.remote_video_rtp_port,
+                                         &current_session.remote_video_payload_type);
         }
 
         // Send ACK
@@ -841,7 +856,7 @@ pj_status_t sip_calling_create_sdp_offer(pj_pool_t* mem_pool,
         snprintf(sdp_body + len, sizeof(sdp_body) - len,
                  "m=video %d RTP/AVP %d\r\n"
                  "a=rtpmap:%d H264/90000\r\n"
-                 "a=fmtp:%d packetization-mode=1;profile-level-id=4D401F\r\n"
+                 "a=fmtp:%d packetization-mode=1;profile-level-id=42e01e\r\n"
                  "a=sendonly\r\n",
                  local_video_rtp_port,
                  video_payload_type,
@@ -849,19 +864,56 @@ pj_status_t sip_calling_create_sdp_offer(pj_pool_t* mem_pool,
                  video_payload_type);
     }
 
+    PJ_LOG(3,(THIS_FILE, "Local SDP:\n%s", sdp_body));
     pj_strdup2(mem_pool, sdp_str, sdp_body);
     return PJ_SUCCESS;
 }
 
+static int parse_h264_payload_type(const char *sdp_content) {
+    const char *video = strstr(sdp_content, "m=video ");
+    const char *line;
+
+    if (!video) {
+        return 0;
+    }
+
+    line = video;
+    while (line && *line) {
+        const char *next = strstr(line, "\n");
+        int payload_type = 0;
+        char codec[32];
+
+        if (line != video && strncmp(line, "m=", 2) == 0) {
+            break;
+        }
+        if (sscanf(line, "a=rtpmap:%d %31[^/\r\n]", &payload_type, codec) == 2) {
+            if (strcasecmp(codec, "H264") == 0) {
+                return payload_type;
+            }
+        }
+
+        if (!next) {
+            break;
+        }
+        line = next + 1;
+    }
+
+    return 0;
+}
+
 pj_status_t sip_calling_parse_sdp_answer(const char* sdp_content,
                                          int* remote_rtp_port,
-                                         int* remote_video_rtp_port) {
+                                         int* remote_video_rtp_port,
+                                         int* remote_video_payload_type) {
     if (!sdp_content || !remote_rtp_port || !remote_video_rtp_port) {
         return PJ_EINVAL;
     }
 
     *remote_rtp_port = 8000;  // Default
     *remote_video_rtp_port = 0;
+    if (remote_video_payload_type) {
+        *remote_video_payload_type = 0;
+    }
 
     const char* media_line = strstr(sdp_content, "m=audio ");
     if (media_line) {
@@ -884,6 +936,14 @@ pj_status_t sip_calling_parse_sdp_answer(const char* sdp_content,
                 *remote_video_rtp_port = port;
                 PJ_LOG(3,(THIS_FILE, "Parsed remote video RTP port: %d", port));
             }
+        }
+    }
+
+    if (remote_video_payload_type) {
+        *remote_video_payload_type = parse_h264_payload_type(sdp_content);
+        if (*remote_video_payload_type > 0) {
+            PJ_LOG(3,(THIS_FILE, "Parsed remote H264 payload type: %d",
+                      *remote_video_payload_type));
         }
     }
 
