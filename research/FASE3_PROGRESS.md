@@ -367,3 +367,34 @@ Need to decode this value to complete the VENC setup.
 SDK: sys_init + vi_open + vout_open + venc_open + map_bsb
 Raw fd: config (frame_interval, bitrate, h264) + start_stream
 SDK: get_stream (returns real H.264 data!)
+
+## 2026-06-29 — Video capture works but unreliable
+
+### Factory defaults produce real H.264
+Without any manual configuration, the factory's pre-configured VENC produces:
+- SPS + PPS + IDR frames with valid NAL units (00 00 00 01 47/48/45)
+- First frame: 1779 bytes I-frame (stream 2)
+- Sub-streams: 14-22 byte metadata NAL units
+- 190 frames captured in one test run
+
+### Reliability issue
+- First run: captures frames successfully
+- Subsequent runs: all get_stream calls return errors
+- Likely cause: driver state doesn't reset between runs
+- The SDK's gadi_venc_get_stream uses static internal state
+- After stop_stream + restart, state is corrupted
+
+### Video file analysis
+- capture_factory.h264: 19KB, valid H.264 with SPS/PPS/IDR
+- First 4 bytes: 00 00 00 01 47 (SPS NAL)
+- Mixed streams: need to filter by stream_id for clean video
+
+### Working recipe
+1. Fresh WiBox reboot
+2. Load modules + gadi_sys_init + vi/vout/venc open  
+3. SDK gadi_venc_map_bsb
+4. Raw fd ioctl START_STREAM (0xc004652a)
+5. SDK gadi_venc_get_stream with stream_id=0xFF
+6. Save frames to file
+
+Needs fresh state each run — can't restart without reboot.
