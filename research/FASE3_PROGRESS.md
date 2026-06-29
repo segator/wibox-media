@@ -232,3 +232,37 @@ Necesitamos el layout exacto desde el código decompilado o desde el kernel modu
 ### Próximo
 - Extraer struct layout de Sofia decompilado (trazar byte-a-byte desde local_6c)
 - O analizar media.ko para encontrar el handler de 0x40047687
+
+## 2026-06-29 — Direct ioctl approach: partial success
+
+### Working direct ioctls (from Sofia decompilation)
+| IoCTL | Nombre | Struct | Status |
+|-------|--------|--------|--------|
+| 0x40046533 | SET_FRAME_INTERVAL | `{int mask; u8 num; u8 den}` | ✅ OK |
+| 0x40046538 | SET_BITRATE | `{int mask; int brc; int cbr; int vbrMin; int vbrMax}` | ✅ OK |
+| 0xc0046540 | GETSET_H264_CFG | internal handle struct | ✅ OK (ret=0) |
+| 0x40047683 | SET_SRCBUF_TYPE | `{int[4] types}` | ✅ OK |
+| 0x80047670 | GET_CHIP_INFO | `{int chip_type, int vi_handle}` | ✅ OK |
+
+### Not working
+| IoCTL | Issue |
+|-------|-------|
+| 0x40047687 | SET_SRCBUF_FORMAT | EINVAL — exact struct layout unknown |
+| 0x40046528 | SET_ENCODE_FORMAT | EINVAL — needs internal handle state |
+| 0xc0046540 | SET_H264_CFG | EINVAL — needs internal handle state |
+| 0x40047689 | SET_PREVIEW_FMT | not tested yet |
+
+### SDK SET functions
+All 3 SDK SET functions (set_channels_params, set_stream_format, set_h264_config) 
+crash with SEGV in R10973. The SEGV happens BEFORE the ioctl, so data never 
+reaches the driver.
+
+### Sofia struct analysis (from disassembly)
+- 0x40047687 struct at sp+28: 37 bytes, complex interleaved pattern
+  {w1,h1,d1, w2,h2, sub_w,sub_h,d2, w3,h3, sub_w,sub_h,d3, w4,h4, sub_w,sub_h,d4, intlc}
+  Sub-buffer dimensions are always chan1Width x chan1Height
+
+### Path forward
+Option A: Accept R10973 limitations — use SDK for init + direct ioctl for frame/bitrate
+Option B: Find R13210 SDK
+Option C: Extract full VENC state machine from Sofia and replicate internal handle
