@@ -190,3 +190,45 @@ Los ioctl codes NO son el problema — son idénticos.
 El SEGV está en el código de libadi R10973 ANTES del ioctl.
 Posible causa: struct layouts diferentes entre R10973 y R13210
 que causan acceso a memoria inválida durante la preparación del ioctl.
+
+## 2026-06-29 — Sofia decompilado (Ghidra) y direct-ioctl
+
+### Sofia decompilado
+- Exportado a ~/Sofia.c (522K líneas, 14MB) desde Ghidra
+- Funciones GADI VENC identificadas en decompilado:
+  - `FUN_0026e800` = gadi_venc_set_channels_params
+  - `FUN_0026f08c` = gadi_venc_set_stream_format
+  - `FUN_0026f51c` = gadi_venc_set_h264_config
+  - `FUN_0026d8d0` = helper sync (llamado por todas las SET)
+  - `FUN_0026f404` = gadi_venc_get_h264_config
+
+### IoCTL mapping R13210 (Sofia) vs R10973 (nuestra)
+
+| IoCTL | Nombre | R13210 | R10973 | Status |
+|-------|--------|--------|--------|--------|
+| 0x80047670 | GET_CHIP_INFO | ✅ Sofia | ❌ ausente | NUEVO en R13210 |
+| 0x40047687 | SET_SRCBUF_FORMAT | ✅ Sofia | ✅ nuestra | COMMAND OK, struct EINVAL |
+| 0x40047683 | SET_SRCBUF_TYPE | ✅ Sofia | ✅ nuestra | FUNCIONA |
+| 0x80047674 | GET_SYS_RESOURCE | ✅ Sofia | ✅ nuestra | FUNCIONA |
+| 0x40047673 | SET_SYS_RESOURCE | ✅ Sofia | ✅ nuestra | FUNCIONA |
+| 0x40046533 | SET_FRAME_INTERVAL | ✅ Sofia | ✅ nuestra | no probado |
+| 0x40046528 | SET_ENCODE_FORMAT | ✅ Sofia | ✅ nuestra | no probado |
+| 0xc0046540 | GETSET_H264_CFG | ✅ Sofia | ✅ nuestra | no probado |
+| 0x4004653f | SET_H264_CFG | ✅ Sofia | ✅ nuestra | no probado |
+| 0x40046538 | SET_BITRATE | ✅ Sofia | ✅ nuestra | no probado |
+
+### Bloqueo: 0x40047687 (set source buffer format)
+- El comando ioctl es correcto (ambas versiones lo usan)
+- Siempre retorna -1 EINVAL (invalid argument)
+- Probados structs de 25, 27, 28, 32, 48 bytes — todos EINVAL
+- La función original R10973 construye un struct en sp+16 con datos de venc_check_resource
+- venc_check_resource valida dimensiones contra límites del sistema
+
+### Hipótesis
+El struct para 0x40047687 es un formato interno del driver que NO coincide
+con GADI_VENC_ChannelsParamsT. Sofia construye un struct específico byte a byte.
+Necesitamos el layout exacto desde el código decompilado o desde el kernel module.
+
+### Próximo
+- Extraer struct layout de Sofia decompilado (trazar byte-a-byte desde local_6c)
+- O analizar media.ko para encontrar el handler de 0x40047687
