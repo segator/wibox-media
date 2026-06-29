@@ -300,3 +300,41 @@ Sequence:
 
 This bypasses the entire libadi VENC layer. The kernel modules handle
 everything through the raw device fd.
+
+## 2026-06-29 — Full pipeline test results
+
+### Pipeline status with raw fd
+
+| Step | Method | Status |
+|------|--------|--------|
+| sys/vi/vout init | SDK (R10973) | ✅ |
+| get_chip_info | raw ioctl | ✅ chip=4 |
+| resource sync | raw ioctl | ✅ |
+| set_srcbuf_type (0x40047683) | raw ioctl | ✅ |
+| set_srcbuf_format (0x40047687) | raw ioctl | ❌ EINVAL |
+| set_frame_interval (0x40046533) | raw ioctl | ✅ |
+| set_bitrate (0x40046538) | raw ioctl | ✅ |
+| getset_h264 (0xc0046540) | raw ioctl | ✅ (wrong struct) |
+| set_h264 (0x4004653f) | raw ioctl | ✅ |
+| map_bsb (0xc0047686) | raw ioctl | ❌ (needs srcbuf_fmt) |
+| map_dsp (0x80046d04) | raw ioctl | ✅ 7.3MB buffer |
+| start_stream (0xc004652a) | raw ioctl | ✅ ret=0 |
+| stop_stream (0x80047652) | raw ioctl | ✅ ret=0 |
+| get_stream (0x80046537) | raw ioctl | ❌ EFAULT (needs BSB) |
+
+### Blocker: 0x40047687 (set_srcbuf_format)
+- Sofia trace shows this ioctl at #115 with 4-byte buffer [024002b0]
+- The 4-byte buffer is a VALUE, not a struct pointer
+- Likely format: packed enable/handle bits
+- Without this ioctl, map_bsb fails and get_stream can't work
+
+### Attempts
+- 37-byte Sofia struct: EINVAL
+- 48-byte channels struct: EINVAL
+- 4-byte values: EINVAL
+- libadi.so dynamic link: pthread symbol resolution fails on WiBox
+
+### Next: decode 0x40047687 from Sofia's actual usage
+The 4 bytes [02 40 02 b0] from Sofia's trace at ioctl #115 encode
+the source buffer configuration. Need to map these bytes to their
+meaning by analyzing Sofia's code flow.
