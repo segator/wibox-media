@@ -234,9 +234,9 @@ Verification:
 - WiBox fake-client test published Home Assistant discovery and initial state.
 - WiBox fake-client test consumed `video/enabled/set OFF` and updated daemon
   state without crashing.
-- Real broker at `192.168.0.203` is reachable but rejected the provided
-  credentials during direct `mosquitto_pub/sub` tests, so real HA discovery is
-  pending corrected auth/ACL.
+- Real broker is reachable but rejected the provided runtime credentials during
+  direct `mosquitto_pub/sub` tests, so real HA discovery is pending corrected
+  auth/ACL.
 
 ### Phase 4: Integrate Video Worker
 
@@ -244,10 +244,30 @@ Goal:
 - Move `video_rtp_bridge` logic into the daemon or a daemon-owned module.
 - Keep per-call isolation only if it is proven useful for crash containment.
 
+Implementation:
+- Added `src/sip_media/video_worker.c` as a daemon-linked wrapper around the
+  verified D1 H.264 capture path.
+- `wibox-media-daemon` still forks per call, but the child executes the
+  in-process video worker function instead of `execl()`ing
+  `/usr/bin/video_rtp_bridge`.
+- `video_rtp_bridge` remains available as a standalone source/debug tool, but
+  the firmware runtime no longer packages `include/bin/video_rtp_bridge`.
+- The fork boundary is intentionally retained because the GADI/ioctl path is
+  complex and has prior crash risk; ownership is now daemon-controlled.
+- `/tmp/pipe_sip` supports `VIDEO_TEST <ip> <port> <seconds>` for bounded local
+  D1 worker tests without a SIP peer.
+
 Verification:
 - D1 `stream_id==0` RTP H.264 works.
 - Long call cleanup works.
 - `video_enabled=0` keeps video fully disabled.
+
+Evidence:
+- `make build-media` links `wibox-media-daemon` with `libadi.a`.
+- Real MicroSIP call started `Started in-daemon video worker`, captured and
+  sent D1 `stream_id == 0` frames, accepted DTMF `#`, and cleaned up on BYE.
+- `VIDEO_TEST 192.168.0.183 4014 5` captured `stream_id == 0` frames and
+  stopped the worker/panel context cleanly.
 
 ### Phase 5: Integrate Audio Bridge
 

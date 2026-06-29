@@ -31,6 +31,7 @@ typedef struct {
     void* user_data;
     pthread_t thread;
     int running;
+    int connected;
     pid_t sub_pid;
 } mqtt_state_t;
 
@@ -154,7 +155,7 @@ static int mqtt_publish_raw(const char* topic, const char* payload, int retain) 
     shell_quote(payload, q_payload, sizeof(q_payload));
     build_common_opts(opts, sizeof(opts), "pub");
 
-    snprintf(cmd, sizeof(cmd), "%s %s %s -t %s -m %s",
+    snprintf(cmd, sizeof(cmd), "%s %s %s -t %s -m %s >/dev/null 2>&1",
              q_pub, retain ? "-r" : "", opts, q_topic, q_payload);
     return run_command(cmd);
 }
@@ -183,6 +184,9 @@ static void topic_path(char* out, size_t out_size, const char* suffix) {
 
 static void publish_suffix(const char* suffix, const char* payload, int retain) {
     char topic[256];
+    if (!mqtt_state.connected) {
+        return;
+    }
     topic_path(topic, sizeof(topic), suffix);
     mqtt_publish_raw(topic, payload, retain);
 }
@@ -312,7 +316,7 @@ static void publish_video_switch_config(void) {
 }
 
 void mqtt_publish_discovery(void) {
-    if (!mqtt_state.enabled) return;
+    if (!mqtt_state.enabled || !mqtt_state.connected) return;
 
     publish_button_config();
     publish_binary_sensor_config("ringing", "Ringing", "ringing", "occupancy");
@@ -327,12 +331,12 @@ void mqtt_publish_discovery(void) {
 }
 
 void mqtt_publish_online(void) {
-    if (!mqtt_state.enabled) return;
+    if (!mqtt_state.enabled || !mqtt_state.connected) return;
     mqtt_publish_raw(mqtt_state.base_topic, "online", 1);
 }
 
 void mqtt_publish_offline(void) {
-    if (!mqtt_state.enabled) return;
+    if (!mqtt_state.enabled || !mqtt_state.connected) return;
     mqtt_publish_raw(mqtt_state.base_topic, "offline", 1);
 }
 
@@ -508,13 +512,16 @@ static void* mqtt_thread_func(void* arg) {
         char line[512];
 
         if (mqtt_check_connection() != 0) {
+            mqtt_state.connected = 0;
             printf("%s: broker unavailable or unauthorized, retrying later\n", MQTT_FILE);
             sleep(30);
             continue;
         }
+        mqtt_state.connected = 1;
 
         fp = start_subscriber();
         if (!fp) {
+            mqtt_state.connected = 0;
             sleep(5);
             continue;
         }
@@ -536,6 +543,7 @@ static void* mqtt_thread_func(void* arg) {
         }
 
         fclose(fp);
+        mqtt_state.connected = 0;
         if (mqtt_state.sub_pid > 0) {
             int status;
             waitpid(mqtt_state.sub_pid, &status, WNOHANG);
@@ -629,6 +637,7 @@ void mqtt_stop(void) {
     }
 
     mqtt_publish_offline();
+    mqtt_state.connected = 0;
     mqtt_state.running = 0;
     if (mqtt_state.sub_pid > 0) {
         kill(mqtt_state.sub_pid, SIGTERM);

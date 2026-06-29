@@ -3,6 +3,7 @@ set -eu
 
 docker run --rm \
   -v "$(pwd)":/workspace \
+  -v "${SDK_DIR:-$HOME/config/GK710X_LinuxSDK_v2.0.0}":/sdk \
   -w /workspace/src/sip_media \
   wibox-build:latest \
   sh -lc 'export PATH=/opt/4.6.1/usr/bin:$PATH; make clean PROGRAM=wibox-media-daemon && make PROGRAM=wibox-media-daemon'

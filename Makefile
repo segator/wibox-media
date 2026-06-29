@@ -20,7 +20,6 @@ build: build-media
 build-media:
 	./build-audio_bridge.sh
 	./build-wibox-media-daemon.sh
-	./build-video_rtp_bridge.sh
 	rm -f src/audio_bridge/audio_bridge src/audio_bridge/*.o
 	rm -f src/sip_media/sip_media src/sip_media/wibox-media-daemon src/sip_media/*.o
 	rm -f src/video_rtp_bridge/video_rtp_bridge
@@ -64,7 +63,7 @@ help:
 	@echo ""
 	@echo "  1. make docker    Build Docker build-tool (one-time)"
 	@echo "  2. make build     Build media binaries and firmware image (cramfs)"
-	@echo "  3. make build-media  Build audio_bridge, wibox-media-daemon, video_rtp_bridge"
+	@echo "  3. make build-media  Build audio_bridge and wibox-media-daemon"
 	@echo ""
 	@echo "  Prerequisite: factory mtd4 backup at ./mtd4"
 	@echo "  Output:        release/image-YYMMDD-HHMM"

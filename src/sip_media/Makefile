@@ -35,28 +35,33 @@ ifeq ($(IS_CONTAINER),true)
     CC = arm-goke-linux-uclibcgnueabi-gcc
     TOPDIR = /workspace
     PJSIP_DIR = /opt/pjproject-2.11.1
+    ADI_SDK_DIR = /sdk
 else
     # Running on host - use original toolchain
     TOPDIR = ../../
     CC = $(TOPDIR)/tools/toolchain/arm-linux/4.6.1/usr/bin/arm-goke-linux-uclibcgnueabi-gcc
     PJSIP_DIR = $(TOPDIR)/applications/pjproject-2.11.1
+    ADI_SDK_DIR ?= $(HOME)/config/GK710X_LinuxSDK_v2.0.0
 endif
 
 ################################################################################
 # source files
 ################################################################################
 
-SOURCES = sip_media.c sip_calling.c intercom.c config.c mqtt.c
+SOURCES = sip_media.c sip_calling.c intercom.c config.c mqtt.c video_worker.c
 
 ################################################################################
 # define user cc flags
 ################################################################################
 
-CCFLAGS_USER = -O2 -DDEBUG -g
+CCFLAGS_USER = -O2 -DDEBUG -g -std=gnu99
 CCFLAGS_USER += -I$(PJSIP_DIR)/pjsip/include
 CCFLAGS_USER += -I$(PJSIP_DIR)/pjlib/include
 CCFLAGS_USER += -I$(PJSIP_DIR)/pjlib-util/include
 CCFLAGS_USER += -DPJ_IS_LITTLE_ENDIAN=1 -DPJ_IS_BIG_ENDIAN=0
+CCFLAGS_USER += -I$(TOPDIR)/include/adi
+CCFLAGS_USER += -I$(ADI_SDK_DIR)/adi/include
+CCFLAGS_USER += -I$(ADI_SDK_DIR)/install/arm11-gcc-uClibc-linux-GK710XS/include
 
 ################################################################################
 # define library paths and libraries
@@ -67,6 +72,7 @@ LDFLAGS_USER += -L$(PJSIP_DIR)/pjlib/lib
 LDFLAGS_USER += -L$(PJSIP_DIR)/pjlib-util/lib
 # ADD RPATH to look for libraries next to executable
 LDFLAGS_USER += -Wl,-rpath,.
+ADI_STATIC_LIB = $(ADI_SDK_DIR)/install/arm11-gcc-uClibc-linux-GK710XS/lib/libadi.a
 
 # PJSIP libraries
 ifeq ($(IS_CONTAINER),true)
@@ -112,6 +118,7 @@ sip_calling.o: sip_calling.c sip_calling.h
 intercom.o: intercom.c intercom.h
 config.o: config.c config.h
 mqtt.o: mqtt.c mqtt.h config.h
+video_worker.o: video_worker.c video_worker.h ../video_rtp_bridge/video_rtp_bridge.c
 
 ################################################################################
 # Build rules
@@ -129,7 +136,7 @@ default: $(PROGRAM)
 # Main program target
 $(PROGRAM): $(OBJECTS)
 	@echo "Linking $(PROGRAM) from object files: $(OBJECTS)"
-	$(CC) $(LDFLAGS_USER) $(OBJECTS) $(addprefix -l,$(LIBRARIES)) -o $(PROGRAM)
+	$(CC) $(LDFLAGS_USER) $(OBJECTS) $(ADI_STATIC_LIB) $(addprefix -l,$(LIBRARIES)) -o $(PROGRAM)
 	@echo "Build complete: $(PROGRAM)"
 
 %.o: %.c

@@ -22,6 +22,7 @@
 #include "intercom.h"        // Our communication with the intercom
 #include "config.h"          // Configuration management
 #include "mqtt.h"            // MQTT/Home Assistant integration
+#include "video_worker.h"    // In-daemon D1 H.264 RTP worker
 
 #define THIS_FILE "wibox-media-daemon"
 #define CONFIG_FILE "/mnt/mtd/sip_media.conf"
@@ -97,6 +98,7 @@ static int start_ding_monitoring(void);
 static void stop_ding_monitoring(void);
 static void handle_ding_trigger(const char* source);
 static void handle_uart_frame(const unsigned char frame[4]);
+static void handle_video_test_control(const char* message);
 static void* serial_monitor_thread_func(void* arg);
 static int start_serial_monitoring(void);
 static void stop_serial_monitoring(void);
@@ -560,9 +562,6 @@ static void on_audio_ready(const char* remote_ip, int remote_rtp_port,
 }
 
 static void start_video_session(const char* remote_ip, int remote_video_port) {
-    char remote_port_arg[16];
-    char local_port_arg[16];
-    char payload_type_arg[16];
     const sip_call_session_t *session;
     int payload_type;
 
@@ -575,7 +574,7 @@ static void start_video_session(const char* remote_ip, int remote_video_port) {
         return;
     }
     if (video_bridge_pid > 0) {
-        PJ_LOG(3,(THIS_FILE, "Video bridge already running pid=%d", video_bridge_pid));
+        PJ_LOG(3,(THIS_FILE, "Video worker already running pid=%d", video_bridge_pid));
         return;
     }
 
@@ -585,30 +584,25 @@ static void start_video_session(const char* remote_ip, int remote_video_port) {
         payload_type = session->remote_video_payload_type;
     }
 
-    snprintf(remote_port_arg, sizeof(remote_port_arg), "%d", remote_video_port);
-    snprintf(local_port_arg, sizeof(local_port_arg), "%d", app_config.video_rtp_port);
-    snprintf(payload_type_arg, sizeof(payload_type_arg), "%d", payload_type);
-
     video_bridge_pid = fork();
     if (video_bridge_pid < 0) {
-        PJ_LOG(1,(THIS_FILE, "Failed to fork video bridge: %s", strerror(errno)));
+        PJ_LOG(1,(THIS_FILE, "Failed to fork video worker: %s", strerror(errno)));
         video_bridge_pid = -1;
         return;
     }
     if (video_bridge_pid == 0) {
-        int log_fd = open("/tmp/video_rtp_bridge.log",
+        int log_fd = open("/tmp/wibox-video-worker.log",
                           O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (log_fd >= 0) {
             dup2(log_fd, STDOUT_FILENO);
             dup2(log_fd, STDERR_FILENO);
             close(log_fd);
         }
-        execl(app_config.video_bridge_path, app_config.video_bridge_path,
-              remote_ip, remote_port_arg, local_port_arg, payload_type_arg, (char*)NULL);
-        _exit(127);
+        _exit(video_worker_run(remote_ip, remote_video_port,
+                               app_config.video_rtp_port, payload_type, NULL));
     }
 
-    PJ_LOG(3,(THIS_FILE, "Started video bridge pid=%d to %s:%d payload=%d",
+    PJ_LOG(3,(THIS_FILE, "Started in-daemon video worker pid=%d to %s:%d payload=%d",
               video_bridge_pid, remote_ip, remote_video_port, payload_type));
     mqtt_publish_video_active(1);
 }
@@ -621,7 +615,7 @@ static void stop_video_session(void) {
         return;
     }
 
-    PJ_LOG(3,(THIS_FILE, "Stopping video bridge pid=%d", video_bridge_pid));
+    PJ_LOG(3,(THIS_FILE, "Stopping video worker pid=%d", video_bridge_pid));
     kill(video_bridge_pid, SIGTERM);
     for (i = 0; i < 20; i++) {
         pid_t r = waitpid(video_bridge_pid, &status, WNOHANG);
@@ -669,6 +663,33 @@ static void mqtt_set_video_enabled_callback(int enabled, void* user_data) {
     app_config.video_enabled = enabled ? 1 : 0;
     printf("MQTT video_enabled set to %d\n", app_config.video_enabled);
     mqtt_publish_video_enabled(app_config.video_enabled);
+}
+
+static void handle_video_test_control(const char* message) {
+    char ip[64];
+    int port;
+    int seconds;
+
+    if (sscanf(message, "%63s %d %d", ip, &port, &seconds) != 3 ||
+        port <= 0 || seconds <= 0 || seconds > 30) {
+        PJ_LOG(2,(THIS_FILE, "Invalid VIDEO_TEST command: '%s'", message));
+        return;
+    }
+
+    if (video_bridge_pid > 0) {
+        PJ_LOG(2,(THIS_FILE, "VIDEO_TEST ignored - video worker already running"));
+        return;
+    }
+
+    PJ_LOG(3,(THIS_FILE, "VIDEO_TEST starting to %s:%d for %d seconds",
+              ip, port, seconds));
+    intercom_send_command(INTERCOM_CMD_START_CALL);
+    usleep(500000);
+    start_video_session(ip, port);
+    sleep((unsigned)seconds);
+    stop_video_session();
+    intercom_send_command(INTERCOM_CMD_STOP_CALL);
+    PJ_LOG(3,(THIS_FILE, "VIDEO_TEST complete"));
 }
 
 static void handle_ding_trigger(const char* source) {
@@ -751,6 +772,11 @@ static void handle_control_message(const char* message) {
 
     if (strncmp(message, app_config.ding_message, strlen(app_config.ding_message)) == 0) {
         handle_ding_trigger("pipe");
+        return;
+    }
+
+    if (strncmp(message, "VIDEO_TEST ", 11) == 0) {
+        handle_video_test_control(message + 11);
         return;
     }
 

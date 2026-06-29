@@ -10,16 +10,19 @@ the one-time Sofia boot warmup.
 - `src/sip_media/`: current source directory for `wibox-media-daemon`, the
   SIP/RTP media app. It still uses the historical directory name during the
   migration.
-- `src/video_rtp_bridge/`: derived from the verified D1 capture test. It captures
-  `stream_id == 0` and sends Annex-B H.264 as RTP/H264.
+- `src/sip_media/video_worker.c`: in-daemon D1 H.264 RTP worker. It embeds the
+  verified `src/video_rtp_bridge/` capture path and runs in a per-call child
+  process for GADI/ioctl crash containment.
+- `src/video_rtp_bridge/`: retained as a standalone research/debug tool, not as
+  a firmware runtime binary.
 
 Runtime processes:
 
 ```text
 audio_bridge        <-> /tmp/audio_from_intercom, /tmp/audio_to_intercom <-> wibox-media-daemon
 wibox-media-daemon  <-> RTP audio PCMA/8000 on port 8000
-wibox-media-daemon  ->  forks video_rtp_bridge when SDP has a remote video port
-video_rtp_bridge -> RTP H.264/90000 on port 8002, payload type 96
+wibox-media-daemon  ->  forks in-daemon video worker when SDP has a remote video port
+video worker        -> RTP H.264/90000 on port 8002
 ```
 
 ## Call Flow
@@ -36,9 +39,9 @@ video_rtp_bridge -> RTP H.264/90000 on port 8002, payload type 96
 6. When the call is established:
    - `wibox-media-daemon` sends `START_CALL` to `/dev/ttySGK1`;
    - audio threads start PCMA RTP;
-   - `video_rtp_bridge` starts D1 capture and sends H.264 RTP.
+   - the in-daemon video worker starts D1 capture and sends H.264 RTP.
 7. On hangup:
-   - `wibox-media-daemon` stops `video_rtp_bridge`;
+   - `wibox-media-daemon` stops the video worker child;
    - audio threads stop;
    - `STOP_CALL` is sent to `/dev/ttySGK1`.
 
@@ -49,7 +52,7 @@ make build-media
 make build
 ```
 
-`video_rtp_bridge` uses `SDK_DIR`, defaulting to
+The in-daemon video worker links `libadi.a`; `SDK_DIR` defaults to
 `$HOME/config/GK710X_LinuxSDK_v2.0.0`.
 `make build` runs `make build-media` before packing the cramfs image.
 
@@ -65,7 +68,6 @@ rtp_port=8000
 video_enabled=1
 video_rtp_port=8002
 video_payload_type=96
-video_bridge_path=/usr/bin/video_rtp_bridge
 serial_listener_enabled=1
 intercom_device=/dev/ttySGK1
 mqtt_enabled=1
@@ -85,18 +87,24 @@ mqtt_device_name=
 ```sh
 echo DING > /tmp/pipe_sip
 echo 'UART FB 11 00 1C' > /tmp/pipe_sip
+echo 'VIDEO_TEST 192.168.0.183 4014 5' > /tmp/pipe_sip
 ```
 
 `DING` triggers an outgoing call directly. `UART ...` injects a 4-byte panel
 frame into the same handler used by `/dev/ttySGK1`, useful for testing
 `ALARM_REPORT`, `HANG_UP`, and `CMD_STOP_RING` without pressing the physical
 button.
+`VIDEO_TEST` starts the panel call context, runs the embedded D1 video worker
+for a bounded local test, and then stops the panel context.
 
 ## Verification Done
 
-- `audio_bridge`, `wibox-media-daemon`, and `video_rtp_bridge` compile.
+- `audio_bridge` and `wibox-media-daemon` compile.
 - Firmware image builds with all binaries and runtime libraries.
 - Real MicroSIP call verified with audio and H.264 video.
+- Real MicroSIP call verified the in-daemon video worker: `stream_id == 0`
+  frames were captured and sent, DTMF `#` unlocked the door, and BYE stopped
+  video/audio cleanly.
 - DTMF door unlock works in MicroSIP automatic mode after negotiating
   `telephone-event/8000`; SIP INFO is also accepted as a fallback.
 - WiBox smoke test:
@@ -106,7 +114,7 @@ button.
   - MQTT fake-client test publishes Home Assistant discovery and handles
     `video/enabled/set`.
   - `audio_bridge` starts, creates audio pipes, exits cleanly.
-  - `video_rtp_bridge` usage path works.
+  - `VIDEO_TEST` starts the embedded worker and captures D1 `stream_id == 0`.
 
 ## Still To Verify
 
