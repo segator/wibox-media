@@ -15,6 +15,9 @@ via kernel ioctls using the GADI SDK (`libadi.a`) for initialization only.
 
 **Source code:**
 - `src/d1_video_capture.c` — consolidated working D1 H.264 capture test.
+- `src/audio_bridge/` — working GADI audio hardware bridge imported from `wibox-audio`.
+- `src/sip_audio/` — SIP/RTP audio app extended to advertise video and launch `video_rtp_bridge`.
+- `src/video_rtp_bridge/` — D1 H.264 RTP sender derived from the verified video capture path.
 
 **Sofia ioctl traces (ground truth):**
 - `sofia_ioctls_captured.log` — full ioctl trace from Sofia (root/working dir copy)
@@ -75,9 +78,13 @@ docker run --rm -v $(pwd):/work -v /path/to/sdk:/sdk wibox-build:latest \
 5. Stop call video path: `printf "\xfb\x14\x00\x1f" > /dev/ttySGK1`.
 6. Verify with `ffprobe`; expected resolution is `688x576`.
 
-### Next implementation target
-Integrate audio from the existing `wibox-audio` work with this video path, then package
-both as SIP/RTP media for each call.
+### SIP media integration
+- `audio_bridge`, `sip_audio`, and `video_rtp_bridge` build and are included in firmware.
+- `sip_audio` advertises PCMA audio plus H.264 video in SDP.
+- On established calls, `sip_audio` sends `START_CALL`, starts audio RTP, and forks
+  `video_rtp_bridge` for D1 H.264 RTP.
+- On hangup, it stops video, stops audio, and sends `STOP_CALL`.
+- End-to-end SIP video negotiation still needs a real call test.
 
 ## Key Technical Facts
 

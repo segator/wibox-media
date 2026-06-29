@@ -1,0 +1,29 @@
+# Wibox SIP Configuration File
+# Lines starting with # are comments
+# Format: key=value
+
+# SIP Configuration
+outgoing_call_target=sip:1000@192.168.0.31:5060
+outgoing_call_timeout=60
+sip_port=5060
+rtp_port=8000
+
+# Video Configuration
+video_enabled=1
+video_rtp_port=8002
+video_payload_type=96
+video_bridge_path=/usr/bin/video_rtp_bridge
+
+# Named Pipes Configuration
+audio_ai_pipe=/tmp/audio_from_intercom
+audio_ao_pipe=/tmp/audio_to_intercom
+# Name needs to be kept in sync with 'wibox/include/bin/listener.sh'
+sip_listen_pipe=/tmp/pipe_sip
+
+# Message Configuration
+ding_message=DING
+
+# Audio Configuration
+audio_buffer_size=160
+pipe_retry_interval_ms=2000
+pipe_retry_max_attempts=0

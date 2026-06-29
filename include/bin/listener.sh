@@ -121,6 +121,11 @@ while true; do
     fi
   elif is_code ALARM_REPORT; then
     log "Alarm reported, calling at door"
+
+    if [ -p "/tmp/pipe_sip" ]; then
+      echo "DING" > /tmp/pipe_sip &
+    fi
+
     if [ -n "${MQTT_ENABLED}" ]; then
       mqtt_ding ON
       mosquitto_pub -r ${MQTT_OPTS} -t "`mqtt_base_topic`/ding/last" -m "$(date -Iseconds)" &

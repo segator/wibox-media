@@ -13,6 +13,13 @@ patch.log
 /d1_*.log
 /d1_video_capture
 
+/src/audio_bridge/audio_bridge
+/src/audio_bridge/*.o
+/src/audio_bridge/*.so
+/src/sip_audio/sip_audio
+/src/sip_audio/*.o
+/src/video_rtp_bridge/video_rtp_bridge
+
 arm-goke-linux-uclibcgnueabi
 
 .config
