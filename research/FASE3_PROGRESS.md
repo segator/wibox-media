@@ -338,3 +338,32 @@ everything through the raw device fd.
 The 4 bytes [02 40 02 b0] from Sofia's trace at ioctl #115 encode
 the source buffer configuration. Need to map these bytes to their
 meaning by analyzing Sofia's code flow.
+
+## 2026-06-29 — FIRST H.264 FRAMES CAPTURED!
+
+### Breakthrough: encoder produces real H.264 data
+
+Using hybrid approach (SDK for map_bsb + raw fd for config/start):
+- `gadi_venc_get_stream()` returns REAL H.264 NAL units
+- Start codes `00 00 00 01` followed by NAL header `41` (P-slice)
+- Frame sizes: 14-22 bytes (fragments, not complete frames)
+- Encoder is producing data but at sub-optimal configuration
+
+### Hex dump of first capture (78 bytes):
+```
+00 00 00 01 41 e0 cd 5c 2d ff 00 00 52 40 00 00
+00 01 41 e0 cd 5c 2d ff 00 00 03 00 00 03 00 00
+03 00 0c f8 00 00 00 01 41 e0 5d 5c 2d ff 00 00
+52 40 00 00 00 01 41 e0 dd 5c 2d ff 00 00 52 40
+00 00 00 01 41 e0 6d 5c 2d ff 00 00 52 40
+```
+
+### Remaining issue: srcbuf_format (0x40047687)
+Without correct configuration, encoder produces tiny fragments. 
+Sofia trace shows this ioctl uses a 4-byte packed value [024002b0].
+Need to decode this value to complete the VENC setup.
+
+### Working pipeline:
+SDK: sys_init + vi_open + vout_open + venc_open + map_bsb
+Raw fd: config (frame_interval, bitrate, h264) + start_stream
+SDK: get_stream (returns real H.264 data!)
