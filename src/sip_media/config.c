@@ -36,7 +36,7 @@ void config_init_defaults(wibox_config_t* config) {
     config->video_enabled = 1;
     config->video_rtp_port = 8002;
     config->video_payload_type = 96;
-    strcpy(config->video_bridge_path, "/usr/bin/video_rtp_bridge");
+    config->video_bridge_path[0] = '\0';
 
     // Pipe Configuration
     strcpy(config->audio_ai_pipe, "/tmp/audio_ai_to_sip");

@@ -33,7 +33,7 @@ void config_init_defaults(audio_bridge_config_t* config) {
     strcpy(config->pipe_audio_in, "/tmp/audio_to_intercom");
 
     // Debug Configuration
-    config->debug_print_audio_frames = 1;  // Enable by default
+    config->debug_print_audio_frames = 0;
 
     // Hardware Configuration
     config->audio_chip_gpio = 18;  // GPIO18

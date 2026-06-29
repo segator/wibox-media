@@ -10,13 +10,11 @@ The current firmware boots these relevant processes:
 ```text
 run.sh
   -> Sofia_temp.sh                 one-time video hardware warmup
-  -> listener.sh                   serial intercom event listener
-       -> listener_mqtt.sh         MQTT/Home Assistant command listener
-  -> app_watchdog.sh audio_bridge  audio hardware bridge
-  -> app_watchdog.sh sip_media     SIP/RTP media application
+  -> app_watchdog.sh wibox-media-daemon
 
-sip_media
-  -> video_rtp_bridge              forked per video call
+wibox-media-daemon
+  -> audio worker                  forked at daemon startup
+  -> video worker                  forked per video call
 ```
 
 Data flow:
@@ -27,19 +25,19 @@ Data flow:
   |      |
   |      +-- sip_media: START_CALL, STOP_CALL, UNLOCK_DOOR
   |
-  +--------- listener.sh: ALARM_REPORT, call state, legacy MQTT actions
+  +--------- wibox-media-daemon: ALARM_REPORT, call state, MQTT actions
 
-listener.sh --DING--> /tmp/pipe_sip --> sip_media
+/tmp/pipe_sip --> wibox-media-daemon
 
-audio_bridge <--> /tmp/audio_from_intercom
-audio_bridge <--> /tmp/audio_to_intercom
+audio worker <--> /tmp/audio_from_intercom
+audio worker <--> /tmp/audio_to_intercom
                               ^
                               |
-                         sip_media <--> SIP/RTP audio
+                         wibox-media-daemon <--> SIP/RTP audio
                               |
-                              +--> video_rtp_bridge <--> RTP H.264 video
+                              +--> video worker <--> RTP H.264 video
 
-listener_mqtt.sh <--> MQTT/Home Assistant
+wibox-media-daemon <--> MQTT/Home Assistant
 ```
 
 ## Current Problems
@@ -275,10 +273,33 @@ Goal:
 - Move `audio_bridge` into the daemon and remove audio pipes.
 - Own audio hardware and RTP timing from one event loop/thread model.
 
+Implementation:
+- Added `src/sip_media/audio_worker.c` as a daemon-linked wrapper around the
+  imported `src/audio_bridge/` GADI audio bridge.
+- `wibox-media-daemon` starts a daemon-owned audio worker child at boot, so the
+  firmware runtime no longer packages or starts `/usr/bin/audio_bridge`.
+- The existing named-pipe frame handoff remains temporarily:
+  `/tmp/audio_from_intercom` and `/tmp/audio_to_intercom`.
+- The fork boundary mirrors the video worker migration and keeps the known-good
+  GADI audio init/shutdown behavior isolated while the runtime is consolidated.
+- `libap.so` is now packaged for the daemon because the embedded audio worker
+  uses the imported AP/AEC path.
+
 Verification:
-- Two-way audio works.
-- DTMF still works.
-- No pipe recovery logic is needed.
+- `make build-media` links `wibox-media-daemon` with the embedded audio worker
+  and `libap.so`; `include/bin/audio_bridge` is absent.
+- WiBox smoke test starts only `wibox-media-daemon` processes; there is no
+  `audio_bridge`, `video_rtp_bridge` or `listener.sh` runtime process.
+- Embedded audio worker creates the audio pipes, initializes GADI/AEC when a
+  client reads `/tmp/audio_from_intercom`, captures A-law frames, and shuts the
+  audio hardware down cleanly when the client disconnects.
+- `VIDEO_TEST 192.168.0.183 4014 8` still captures D1 `stream_id == 0` frames
+  after audio worker integration.
+
+Remaining:
+- Replace the temporary named-pipe handoff with an in-process audio queue.
+- Re-run a real MicroSIP call to validate two-way audio, H.264 video and DTMF
+  together on the embedded audio build.
 
 ### Phase 6: Remove Web UI and Legacy Scripts
 

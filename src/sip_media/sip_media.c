@@ -22,6 +22,7 @@
 #include "intercom.h"        // Our communication with the intercom
 #include "config.h"          // Configuration management
 #include "mqtt.h"            // MQTT/Home Assistant integration
+#include "audio_worker.h"    // In-daemon audio hardware worker
 #include "video_worker.h"    // In-daemon D1 H.264 RTP worker
 
 #define THIS_FILE "wibox-media-daemon"
@@ -49,6 +50,7 @@ static pj_bool_t quit_flag = PJ_FALSE; // Application shutdown flag
 static int rtp_socket = -1;           // UDP socket for audio (RTP)
 static pj_thread_t *audio_input_thread;   // Thread handle for AI -> RTP
 static pj_thread_t *audio_output_thread;  // Thread handle for RTP -> AO
+static pid_t audio_worker_pid = -1;
 static pid_t video_bridge_pid = -1;
 static pj_bool_t call_active = PJ_FALSE; // Is there an active audio session?
 static pj_mutex_t *call_active_mutex; // Mutex to protect call_active
@@ -88,6 +90,8 @@ static void* audio_handler(void* arg);
 static int setup_rtp_socket(void);
 static void start_audio_session(const char* remote_ip, int remote_port);
 static void stop_audio_session(void);
+static int start_audio_worker(void);
+static void stop_audio_worker(void);
 static pj_bool_t open_audio_pipes(void);
 static void close_audio_pipes(void);
 static pj_bool_t is_pipe_error_recoverable(int error);
@@ -559,6 +563,58 @@ static void on_audio_ready(const char* remote_ip, int remote_rtp_port,
     start_audio_session(remote_ip, remote_rtp_port);
     PJ_LOG(3,(THIS_FILE, "Audio session start returned; starting video"));
     start_video_session(remote_ip, remote_video_rtp_port);
+}
+
+static int start_audio_worker(void) {
+    if (audio_worker_pid > 0) {
+        printf("Audio worker already running pid=%d\n", audio_worker_pid);
+        return 0;
+    }
+
+    audio_worker_pid = fork();
+    if (audio_worker_pid < 0) {
+        printf("Failed to fork audio worker: %s\n", strerror(errno));
+        audio_worker_pid = -1;
+        return -1;
+    }
+
+    if (audio_worker_pid == 0) {
+        int log_fd = open("/tmp/wibox-audio-worker.log",
+                          O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (log_fd >= 0) {
+            dup2(log_fd, STDOUT_FILENO);
+            dup2(log_fd, STDERR_FILENO);
+            close(log_fd);
+        }
+        _exit(audio_worker_run());
+    }
+
+    printf("Started in-daemon audio worker pid=%d\n", audio_worker_pid);
+    return 0;
+}
+
+static void stop_audio_worker(void) {
+    int status;
+    int i;
+
+    if (audio_worker_pid <= 0) {
+        return;
+    }
+
+    printf("Stopping audio worker pid=%d\n", audio_worker_pid);
+    kill(audio_worker_pid, SIGTERM);
+    for (i = 0; i < 20; i++) {
+        pid_t r = waitpid(audio_worker_pid, &status, WNOHANG);
+        if (r == audio_worker_pid) {
+            audio_worker_pid = -1;
+            return;
+        }
+        usleep(100000);
+    }
+
+    kill(audio_worker_pid, SIGKILL);
+    waitpid(audio_worker_pid, &status, 0);
+    audio_worker_pid = -1;
 }
 
 static void start_video_session(const char* remote_ip, int remote_video_port) {
@@ -1741,6 +1797,10 @@ int main(int argc, char *argv[]) {
         printf("Warning: Failed to initialize intercom module\n");
     }
 
+    if (start_audio_worker() < 0) {
+        printf("Warning: Failed to start audio worker\n");
+    }
+
     // Initialize PJLIB
     status = pj_init();
     if (status != PJ_SUCCESS) {
@@ -1874,6 +1934,7 @@ int main(int argc, char *argv[]) {
     stop_ding_monitoring();
     stop_video_session();
     stop_audio_session();
+    stop_audio_worker();
 
     // Terminate any active call
     sip_calling_terminate_call();

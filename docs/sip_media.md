@@ -5,22 +5,25 @@ the one-time Sofia boot warmup.
 
 ## Components
 
-- `src/audio_bridge/`: imports the working `wibox-audio` hardware bridge. It
-  owns GADI audio input/output and exposes PCMA frames through named pipes.
 - `src/sip_media/`: current source directory for `wibox-media-daemon`, the
   SIP/RTP media app. It still uses the historical directory name during the
   migration.
+- `src/sip_media/audio_worker.c`: in-daemon wrapper around the working
+  `src/audio_bridge/` GADI audio hardware bridge. It currently runs in a
+  daemon-owned child process and keeps the existing named-pipe frame interface.
 - `src/sip_media/video_worker.c`: in-daemon D1 H.264 RTP worker. It embeds the
   verified `src/video_rtp_bridge/` capture path and runs in a per-call child
   process for GADI/ioctl crash containment.
+- `src/audio_bridge/`: retained as the source/debug copy of the imported
+  `wibox-audio` bridge, not as a firmware runtime binary.
 - `src/video_rtp_bridge/`: retained as a standalone research/debug tool, not as
   a firmware runtime binary.
 
 Runtime processes:
 
 ```text
-audio_bridge        <-> /tmp/audio_from_intercom, /tmp/audio_to_intercom <-> wibox-media-daemon
-wibox-media-daemon  <-> RTP audio PCMA/8000 on port 8000
+wibox-media-daemon  ->  forks in-daemon audio worker at boot
+audio worker        <-> /tmp/audio_from_intercom, /tmp/audio_to_intercom <-> RTP audio PCMA/8000
 wibox-media-daemon  ->  forks in-daemon video worker when SDP has a remote video port
 video worker        -> RTP H.264/90000 on port 8002
 ```
@@ -29,7 +32,8 @@ video worker        -> RTP H.264/90000 on port 8002
 
 1. Sofia warms up the video hardware once after boot.
 2. Sofia exits.
-3. `audio_bridge` and `wibox-media-daemon` run under `app_watchdog.sh`.
+3. `wibox-media-daemon` runs under `app_watchdog.sh` and starts its embedded
+   audio worker.
 4. Doorbell `ALARM_REPORT` is read directly from `/dev/ttySGK1` by
    `wibox-media-daemon`. The legacy `/tmp/pipe_sip` `DING` trigger remains for
    manual testing.
@@ -54,7 +58,9 @@ make build
 
 The in-daemon video worker links `libadi.a`; `SDK_DIR` defaults to
 `$HOME/config/GK710X_LinuxSDK_v2.0.0`.
-`make build` runs `make build-media` before packing the cramfs image.
+The embedded audio worker needs `libap.so`, which is copied from `SDK_DIR` into
+the firmware libraries. `make build` runs `make build-media` before packing the
+cramfs image.
 
 ## Configuration
 
@@ -99,7 +105,7 @@ for a bounded local test, and then stops the panel context.
 
 ## Verification Done
 
-- `audio_bridge` and `wibox-media-daemon` compile.
+- `wibox-media-daemon` compiles with embedded audio and video workers.
 - Firmware image builds with all binaries and runtime libraries.
 - Real MicroSIP call verified with audio and H.264 video.
 - Real MicroSIP call verified the in-daemon video worker: `stream_id == 0`
@@ -113,7 +119,8 @@ for a bounded local test, and then stops the panel context.
   - Control FIFO can inject UART frames for local testing.
   - MQTT fake-client test publishes Home Assistant discovery and handles
     `video/enabled/set`.
-  - `audio_bridge` starts, creates audio pipes, exits cleanly.
+  - Embedded audio worker starts, creates audio pipes, activates GADI on client
+    read, captures A-law frames, and stops audio cleanly.
   - `VIDEO_TEST` starts the embedded worker and captures D1 `stream_id == 0`.
 
 ## Still To Verify
@@ -124,3 +131,4 @@ for a bounded local test, and then stops the panel context.
 - Long-call stability and cleanup around the 90s MCU auto-stop behavior.
 - Daylight video quality; low light adds analog sensor/CVBS noise that bitrate
   cannot remove.
+- Replacing the temporary named-pipe audio handoff with an in-process queue.

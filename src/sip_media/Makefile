@@ -48,7 +48,7 @@ endif
 # source files
 ################################################################################
 
-SOURCES = sip_media.c sip_calling.c intercom.c config.c mqtt.c video_worker.c
+SOURCES = sip_media.c sip_calling.c intercom.c config.c mqtt.c audio_worker.c video_worker.c
 
 ################################################################################
 # define user cc flags
@@ -62,6 +62,11 @@ CCFLAGS_USER += -DPJ_IS_LITTLE_ENDIAN=1 -DPJ_IS_BIG_ENDIAN=0
 CCFLAGS_USER += -I$(TOPDIR)/include/adi
 CCFLAGS_USER += -I$(ADI_SDK_DIR)/adi/include
 CCFLAGS_USER += -I$(ADI_SDK_DIR)/install/arm11-gcc-uClibc-linux-GK710XS/include
+ifeq ($(IS_CONTAINER),true)
+    CCFLAGS_USER += -I/opt/gk710x/ap
+else
+    CCFLAGS_USER += -I$(TOPDIR)/subsystem/audio_processing/ap
+endif
 
 ################################################################################
 # define library paths and libraries
@@ -70,8 +75,13 @@ CCFLAGS_USER += -I$(ADI_SDK_DIR)/install/arm11-gcc-uClibc-linux-GK710XS/include
 LDFLAGS_USER = -L$(PJSIP_DIR)/pjsip/lib
 LDFLAGS_USER += -L$(PJSIP_DIR)/pjlib/lib
 LDFLAGS_USER += -L$(PJSIP_DIR)/pjlib-util/lib
-# ADD RPATH to look for libraries next to executable
-LDFLAGS_USER += -Wl,-rpath,.
+ifeq ($(IS_CONTAINER),true)
+    LDFLAGS_USER += -L/usr/lib
+else
+    LDFLAGS_USER += -L$(ADI_SDK_DIR)/install/arm11-gcc-uClibc-linux-GK710XS/lib
+endif
+# ADD RPATH to look for firmware libraries and test-local libraries.
+LDFLAGS_USER += -Wl,-rpath,/usr/lib:.
 ADI_STATIC_LIB = $(ADI_SDK_DIR)/install/arm11-gcc-uClibc-linux-GK710XS/lib/libadi.a
 
 # PJSIP libraries
@@ -117,6 +127,7 @@ sip_media.o: sip_media.c sip_calling.h intercom.h config.h mqtt.h
 sip_calling.o: sip_calling.c sip_calling.h
 intercom.o: intercom.c intercom.h
 config.o: config.c config.h
+audio_worker.o: audio_worker.c audio_worker.h ../audio_bridge/audio_bridge.c ../audio_bridge/ap.c ../audio_bridge/config.c
 mqtt.o: mqtt.c mqtt.h config.h
 video_worker.o: video_worker.c video_worker.h ../video_rtp_bridge/video_rtp_bridge.c
 
@@ -136,7 +147,7 @@ default: $(PROGRAM)
 # Main program target
 $(PROGRAM): $(OBJECTS)
 	@echo "Linking $(PROGRAM) from object files: $(OBJECTS)"
-	$(CC) $(LDFLAGS_USER) $(OBJECTS) $(ADI_STATIC_LIB) $(addprefix -l,$(LIBRARIES)) -o $(PROGRAM)
+	$(CC) $(LDFLAGS_USER) $(OBJECTS) $(ADI_STATIC_LIB) -lap $(addprefix -l,$(LIBRARIES)) -o $(PROGRAM)
 	@echo "Build complete: $(PROGRAM)"
 
 %.o: %.c

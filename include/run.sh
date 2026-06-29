@@ -136,9 +136,6 @@ if [ ! -f "/mnt/mtd/audio.conf" ] && [ -f "/etc/audio.conf.default" ]; then
   cp /etc/audio.conf.default /mnt/mtd/audio.conf
 fi
 
-if [ -x "/usr/bin/audio_bridge" ]; then
-  /usr/bin/app_watchdog.sh audio_bridge /usr/bin/audio_bridge &
-fi
 if [ -x "/usr/bin/wibox-media-daemon" ]; then
   /usr/bin/app_watchdog.sh wibox-media-daemon /usr/bin/wibox-media-daemon &
 elif [ -x "/usr/bin/sip_media" ]; then

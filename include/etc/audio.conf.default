@@ -8,7 +8,7 @@ pipe_audio_in=/tmp/audio_to_intercom
 
 # Debug Configuration
 # Set to 1 to enable audio frame hex printing, 0 to disable
-debug_print_audio_frames=1
+debug_print_audio_frames=0
 
 # Hardware Configuration
 # GPIO pin number for audio chip enable/disable
