@@ -162,3 +162,31 @@ Headers correctos combinados:
 - Encontrar SDK R13210 (GK710X v2.1+)
 - O extraer ioctls de Sofia (muchos bl <ioctl> encontrados)
 - Posible source: pan602389160/gk7102 con versión más reciente
+
+## 2026-06-29 (cont) — IoCTL comparison
+
+### Nuestra libadi.a (R10973) vs Sofia (R13210) — ioctls IDÉNTICOS
+
+| Función | Nuestra libadi.a | Sofia trace |
+|---------|-----------------|-------------|
+| venc_get (nr=0x00) | 0x80046d00 READ | 0x80046d00 READ |
+| venc_get (nr=0x04) | 0x80046d04 READ | 0x80046d04 READ |
+| venc_get (nr=0x05) | 0x80046d05 READ | 0x80046d05 READ |
+| encode (nr=0x42) | 0x40046542 WRITE | 0x40046542 WRITE |
+
+IoCTL commands son los mismos. La dirección (READ/WRITE) también coincide.
+
+### 71 ioctls extraídos de adi_venc.o
+Mayoría usan tipo 'e' (0x65 = encode) y 'v' (0x76 = video).
+Solo 5 usan tipo 'm' (0x6D = media/VENC directo):
+- 0x00006d08 (NONE, nr=8) — venc_close
+- 0x00006d09 (NONE, nr=9) — venc_close
+- 0x80046d04 (READ, nr=4) — venc_get
+- 0x80046d05 (READ, nr=5) — venc_get_channel_state
+- 0x80046d00 (READ, nr=0) — venc_get_channels_params
+
+### Conclusión
+Los ioctl codes NO son el problema — son idénticos.
+El SEGV está en el código de libadi R10973 ANTES del ioctl.
+Posible causa: struct layouts diferentes entre R10973 y R13210
+que causan acceso a memoria inválida durante la preparación del ioctl.
