@@ -129,8 +129,6 @@ fi
 # update hostname after Sofia run
 echo "IDS7938${UDID:8:4}" > /proc/sys/kernel/hostname
 
-/usr/bin/listener.sh &
-
 if [ ! -f "/mnt/mtd/sip_media.conf" ] && [ -f "/etc/sip_media.conf.default" ]; then
   cp /etc/sip_media.conf.default /mnt/mtd/sip_media.conf
 fi
@@ -144,7 +142,10 @@ fi
 if [ -x "/usr/bin/wibox-media-daemon" ]; then
   /usr/bin/app_watchdog.sh wibox-media-daemon /usr/bin/wibox-media-daemon &
 elif [ -x "/usr/bin/sip_media" ]; then
+  /usr/bin/listener.sh &
   /usr/bin/app_watchdog.sh sip_media /usr/bin/sip_media &
+else
+  /usr/bin/listener.sh &
 fi
 
 [ -f "/mnt/mtd/post.sh" ] && /mnt/mtd/post.sh

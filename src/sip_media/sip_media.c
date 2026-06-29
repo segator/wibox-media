@@ -16,6 +16,7 @@
 #include <errno.h>           // Error numbers
 #include <unistd.h>          // For access()
 #include <sys/stat.h>        // For mkfifo()
+#include <ctype.h>           // Character classification
 
 #include "sip_calling.h"     // Our unified SIP calling module
 #include "intercom.h"        // Our communication with the intercom
@@ -67,6 +68,11 @@ static int ding_pipe_fd = -1;
 static pthread_t ding_monitor_thread;
 static pj_bool_t ding_monitoring_active = PJ_FALSE;
 
+// Intercom serial monitoring
+static int serial_fd = -1;
+static pthread_t serial_monitor_thread;
+static pj_bool_t serial_monitoring_active = PJ_FALSE;
+
 // For DTMF duplicate detection
 static unsigned char last_dtmf_event = 255;  // Invalid event number
 static unsigned int last_dtmf_timestamp = 0;
@@ -88,6 +94,11 @@ static void generate_error_audio(unsigned char* buffer, int size);
 static void* ding_monitor_thread_func(void* arg);
 static int start_ding_monitoring(void);
 static void stop_ding_monitoring(void);
+static void handle_ding_trigger(const char* source);
+static void handle_uart_frame(const unsigned char frame[4]);
+static void* serial_monitor_thread_func(void* arg);
+static int start_serial_monitoring(void);
+static void stop_serial_monitoring(void);
 
 // Network recovery functions
 static int test_rtp_socket_health(void);
@@ -615,6 +626,95 @@ static void stop_video_session(void) {
     video_bridge_pid = -1;
 }
 
+static void handle_ding_trigger(const char* source) {
+    pj_status_t status;
+
+    PJ_LOG(3,(THIS_FILE, "DING detected from %s - checking if we can make outgoing call",
+              source ? source : "unknown"));
+
+    if (sip_calling_is_call_active()) {
+        PJ_LOG(2,(THIS_FILE, "DING ignored - call already active"));
+        return;
+    }
+
+    PJ_LOG(3,(THIS_FILE, "Making outgoing call due to %s", source ? source : "DING"));
+    status = sip_calling_make_call();
+    if (status != PJ_SUCCESS) {
+        PJ_LOG(1,(THIS_FILE, "Failed to make outgoing call: %d", status));
+    }
+}
+
+static int hex_nibble(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+static int parse_uart_control_frame(const char* input, unsigned char frame[4]) {
+    const char* p = input;
+    int count = 0;
+
+    if (strncmp(p, "UART", 4) != 0) {
+        return -1;
+    }
+    p += 4;
+
+    while (*p && count < 4) {
+        int hi;
+        int lo;
+
+        while (*p && (isspace((unsigned char)*p) || *p == ':' || *p == '-')) {
+            p++;
+        }
+        if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+            p += 2;
+        }
+        if (p[0] == '\\' && (p[1] == 'x' || p[1] == 'X')) {
+            p += 2;
+        }
+
+        hi = hex_nibble(p[0]);
+        lo = hex_nibble(p[1]);
+        if (hi < 0 || lo < 0) {
+            return -1;
+        }
+
+        frame[count++] = (unsigned char)((hi << 4) | lo);
+        p += 2;
+    }
+
+    while (*p && isspace((unsigned char)*p)) {
+        p++;
+    }
+
+    return (count == 4 && *p == '\0') ? 0 : -1;
+}
+
+static void handle_control_message(const char* message) {
+    unsigned char frame[4];
+
+    if (strncmp(message, app_config.ding_message, strlen(app_config.ding_message)) == 0) {
+        handle_ding_trigger("pipe");
+        return;
+    }
+
+    if (parse_uart_control_frame(message, frame) == 0) {
+        PJ_LOG(3,(THIS_FILE, "Injecting UART frame from control pipe: %02X %02X %02X %02X",
+                  frame[0], frame[1], frame[2], frame[3]));
+        handle_uart_frame(frame);
+        return;
+    }
+
+    PJ_LOG(2,(THIS_FILE, "Unknown control pipe message: '%s'", message));
+}
+
 // DING monitoring thread
 static void* ding_monitor_thread_func(void* arg) {
     char buffer[64];
@@ -657,20 +757,7 @@ static void* ding_monitor_thread_func(void* arg) {
 
             PJ_LOG(3,(THIS_FILE, "Received DING pipe message: '%s'", buffer));
 
-            if (strncmp(buffer, app_config.ding_message, strlen(app_config.ding_message)) == 0) {
-                PJ_LOG(3,(THIS_FILE, "DING detected - checking if we can make outgoing call"));
-
-                // Check if we're already in a call
-                if (sip_calling_is_call_active()) {
-                    PJ_LOG(2,(THIS_FILE, "DING ignored - call already active"));
-                } else {
-                    PJ_LOG(3,(THIS_FILE, "Making outgoing call due to DING"));
-                    pj_status_t status = sip_calling_make_call();
-                    if (status != PJ_SUCCESS) {
-                        PJ_LOG(1,(THIS_FILE, "Failed to make outgoing call: %d", status));
-                    }
-                }
-            }
+            handle_control_message(buffer);
         } else if (bytes_read == 0) {
             // EOF - no writers, keep pipe open
             usleep(100000);  // 100ms sleep
@@ -736,6 +823,220 @@ static void stop_ding_monitoring(void) {
 
     pthread_join(ding_monitor_thread, NULL);
     PJ_LOG(3,(THIS_FILE, "DING monitoring stopped"));
+}
+
+typedef enum {
+    UART_CODE_UNKNOWN = 0,
+    UART_CODE_ALARM_REPORT,
+    UART_CODE_CMD_RESET,
+    UART_CODE_START_CALL,
+    UART_CODE_HANG_UP_0,
+    UART_CODE_HANG_UP_1,
+    UART_CODE_CMD_STOP_RING,
+    UART_CODE_PUSH_STATE_0,
+    UART_CODE_PUSH_STATE_1,
+    UART_CODE_MCU_STATE_0,
+    UART_CODE_MCU_STATE_1,
+    UART_CODE_CMD_DOWN_LONG_1,
+    UART_CODE_CMD_DOWN_LONG_2
+} uart_code_t;
+
+typedef struct {
+    uart_code_t code;
+    const char* name;
+    unsigned char bytes[4];
+} uart_code_def_t;
+
+static const uart_code_def_t uart_codes[] = {
+    {UART_CODE_ALARM_REPORT,    "ALARM_REPORT",    {0xFB, 0x11, 0x00, 0x1C}},
+    {UART_CODE_CMD_RESET,       "CMD_RESET",       {0xFB, 0x20, 0x00, 0x2B}},
+    {UART_CODE_START_CALL,      "START_CALL",      {0xFB, 0x14, 0x01, 0x20}},
+    {UART_CODE_HANG_UP_0,       "HANG_UP_0",       {0xFB, 0x13, 0x00, 0x1E}},
+    {UART_CODE_HANG_UP_1,       "HANG_UP_1",       {0xFB, 0x13, 0x01, 0x1F}},
+    {UART_CODE_CMD_STOP_RING,   "CMD_STOP_RING",   {0xFB, 0x23, 0x00, 0x2E}},
+    {UART_CODE_PUSH_STATE_0,    "PUSH_STATE_0",    {0xFB, 0x19, 0x00, 0x24}},
+    {UART_CODE_PUSH_STATE_1,    "PUSH_STATE_1",    {0xFB, 0x19, 0x01, 0x25}},
+    {UART_CODE_MCU_STATE_0,     "MCU_STATE_0",     {0xFB, 0x16, 0x00, 0x21}},
+    {UART_CODE_MCU_STATE_1,     "MCU_STATE_1",     {0xFB, 0x16, 0x01, 0x22}},
+    {UART_CODE_CMD_DOWN_LONG_1, "CMD_DOWN_LONG_1", {0xFB, 0x24, 0x01, 0x30}},
+    {UART_CODE_CMD_DOWN_LONG_2, "CMD_DOWN_LONG_2", {0xFB, 0x24, 0x02, 0x31}}
+};
+
+static const uart_code_def_t* find_uart_code(const unsigned char frame[4]) {
+    size_t i;
+
+    for (i = 0; i < sizeof(uart_codes) / sizeof(uart_codes[0]); i++) {
+        if (memcmp(frame, uart_codes[i].bytes, 4) == 0) {
+            return &uart_codes[i];
+        }
+    }
+    return NULL;
+}
+
+static void report_alarm_event(int event_id) {
+    FILE* fp = fopen("/mnt/mtd/alarm.log", "a");
+
+    if (!fp) {
+        PJ_LOG(2,(THIS_FILE, "Failed to append alarm log: %s", strerror(errno)));
+        return;
+    }
+    fprintf(fp, "%ld,%d\n", (long)time(NULL), event_id);
+    fclose(fp);
+}
+
+static void terminate_call_from_serial(const char* reason) {
+    if (!sip_calling_is_call_active()) {
+        return;
+    }
+
+    PJ_LOG(3,(THIS_FILE, "Serial %s received - terminating SIP call", reason));
+    sip_calling_terminate_call();
+}
+
+static void handle_uart_frame(const unsigned char frame[4]) {
+    const uart_code_def_t* def = find_uart_code(frame);
+
+    if (!def) {
+        PJ_LOG(3,(THIS_FILE, "UART code unknown: %02X %02X %02X %02X",
+                  frame[0], frame[1], frame[2], frame[3]));
+        return;
+    }
+
+    PJ_LOG(3,(THIS_FILE, "UART code received: %s [%02X %02X %02X %02X]",
+              def->name, frame[0], frame[1], frame[2], frame[3]));
+
+    switch (def->code) {
+    case UART_CODE_ALARM_REPORT:
+        report_alarm_event(1);
+        handle_ding_trigger("serial alarm");
+        break;
+    case UART_CODE_HANG_UP_0:
+    case UART_CODE_HANG_UP_1:
+        report_alarm_event(2);
+        terminate_call_from_serial(def->name);
+        break;
+    case UART_CODE_CMD_STOP_RING:
+        report_alarm_event(3);
+        terminate_call_from_serial(def->name);
+        break;
+    case UART_CODE_CMD_RESET:
+        PJ_LOG(2,(THIS_FILE, "Factory reset command received from panel"));
+        system("touch /mnt/mtd/factory && sync && reboot");
+        break;
+    case UART_CODE_START_CALL:
+        PJ_LOG(3,(THIS_FILE, "Intercom call line is active"));
+        break;
+    case UART_CODE_PUSH_STATE_0:
+    case UART_CODE_PUSH_STATE_1:
+    case UART_CODE_MCU_STATE_0:
+    case UART_CODE_MCU_STATE_1:
+    case UART_CODE_CMD_DOWN_LONG_1:
+    case UART_CODE_CMD_DOWN_LONG_2:
+    default:
+        break;
+    }
+}
+
+static void* serial_monitor_thread_func(void* arg) {
+    unsigned char frame[4];
+    size_t frame_len = 0;
+    pj_thread_desc desc;
+    pj_thread_t *thread;
+    pj_status_t status;
+
+    status = pj_thread_register("serial_monitor_thread", desc, &thread);
+    if (status != PJ_SUCCESS) {
+        printf("Failed to register serial monitor thread with PJLIB: %d\n", status);
+        return NULL;
+    }
+
+    PJ_LOG(3,(THIS_FILE, "Serial monitor thread started"));
+
+    while (serial_monitoring_active && !quit_flag) {
+        unsigned char buffer[32];
+        ssize_t n;
+        ssize_t i;
+
+        if (serial_fd < 0) {
+            serial_fd = open(app_config.intercom_device, O_RDONLY | O_NONBLOCK);
+            if (serial_fd < 0) {
+                PJ_LOG(2,(THIS_FILE, "Failed to open %s for serial monitoring: %s",
+                          app_config.intercom_device, strerror(errno)));
+                sleep(1);
+                continue;
+            }
+            PJ_LOG(3,(THIS_FILE, "Serial monitor opened %s", app_config.intercom_device));
+        }
+
+        n = read(serial_fd, buffer, sizeof(buffer));
+        if (n > 0) {
+            for (i = 0; i < n; i++) {
+                if (frame_len == 0 && buffer[i] != 0xFB) {
+                    PJ_LOG(3,(THIS_FILE, "Ignoring UART byte before frame: %02X", buffer[i]));
+                    continue;
+                }
+
+                frame[frame_len++] = buffer[i];
+                if (frame_len == sizeof(frame)) {
+                    handle_uart_frame(frame);
+                    frame_len = 0;
+                }
+            }
+        } else if (n == 0) {
+            usleep(100000);
+        } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            usleep(100000);
+        } else {
+            PJ_LOG(2,(THIS_FILE, "Serial monitor read error: %s", strerror(errno)));
+            close(serial_fd);
+            serial_fd = -1;
+            frame_len = 0;
+            sleep(1);
+        }
+    }
+
+    if (serial_fd >= 0) {
+        close(serial_fd);
+        serial_fd = -1;
+    }
+
+    PJ_LOG(3,(THIS_FILE, "Serial monitor thread stopped"));
+    return NULL;
+}
+
+static int start_serial_monitoring(void) {
+    if (!app_config.serial_listener_enabled) {
+        PJ_LOG(3,(THIS_FILE, "Serial monitoring disabled by config"));
+        return 0;
+    }
+    if (serial_monitoring_active) {
+        return 0;
+    }
+
+    serial_monitoring_active = PJ_TRUE;
+    if (pthread_create(&serial_monitor_thread, NULL, serial_monitor_thread_func, NULL) != 0) {
+        PJ_LOG(1,(THIS_FILE, "Failed to create serial monitor thread"));
+        serial_monitoring_active = PJ_FALSE;
+        return -1;
+    }
+
+    PJ_LOG(3,(THIS_FILE, "Serial monitoring started"));
+    return 0;
+}
+
+static void stop_serial_monitoring(void) {
+    if (!serial_monitoring_active) {
+        return;
+    }
+
+    PJ_LOG(3,(THIS_FILE, "Stopping serial monitoring"));
+    serial_monitoring_active = PJ_FALSE;
+    if (serial_fd >= 0) {
+        close(serial_fd);
+        serial_fd = -1;
+    }
+    pthread_join(serial_monitor_thread, NULL);
+    PJ_LOG(3,(THIS_FILE, "Serial monitoring stopped"));
 }
 
 // Generate error audio pattern
@@ -1317,6 +1618,9 @@ int main(int argc, char *argv[]) {
     char local_ip[16];
     sip_call_config_t call_config;
 
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
     // Load configuration first
     if (config_load(CONFIG_FILE, &app_config) < 0) {
         printf("Warning: %s load failed, trying legacy %s\n",
@@ -1448,6 +1752,9 @@ int main(int argc, char *argv[]) {
     if (start_ding_monitoring() < 0) {
         printf("Warning: Failed to start DING monitoring\n");
     }
+    if (start_serial_monitoring() < 0) {
+        printf("Warning: Failed to start serial monitoring\n");
+    }
 
     printf("Wibox SIP client ready. Listening on %s:%d, RTP on %s:%d\n",
            local_ip, app_config.sip_port, local_ip, app_config.rtp_port);
@@ -1473,6 +1780,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Cleanup
+    stop_serial_monitoring();
     stop_ding_monitoring();
     stop_video_session();
     stop_audio_session();

@@ -27,7 +27,9 @@ video_rtp_bridge -> RTP H.264/90000 on port 8002, payload type 96
 1. Sofia warms up the video hardware once after boot.
 2. Sofia exits.
 3. `audio_bridge` and `wibox-media-daemon` run under `app_watchdog.sh`.
-4. Doorbell event writes `DING` to `/tmp/pipe_sip`.
+4. Doorbell `ALARM_REPORT` is read directly from `/dev/ttySGK1` by
+   `wibox-media-daemon`. The legacy `/tmp/pipe_sip` `DING` trigger remains for
+   manual testing.
 5. `wibox-media-daemon` sends SIP INVITE with:
    - `m=audio ... RTP/AVP 8`
    - `m=video ... RTP/AVP 96`
@@ -64,7 +66,23 @@ video_enabled=1
 video_rtp_port=8002
 video_payload_type=96
 video_bridge_path=/usr/bin/video_rtp_bridge
+serial_listener_enabled=1
+intercom_device=/dev/ttySGK1
 ```
+
+## Local Control API
+
+`wibox-media-daemon` keeps `/tmp/pipe_sip` as a local control FIFO. It accepts:
+
+```sh
+echo DING > /tmp/pipe_sip
+echo 'UART FB 11 00 1C' > /tmp/pipe_sip
+```
+
+`DING` triggers an outgoing call directly. `UART ...` injects a 4-byte panel
+frame into the same handler used by `/dev/ttySGK1`, useful for testing
+`ALARM_REPORT`, `HANG_UP`, and `CMD_STOP_RING` without pressing the physical
+button.
 
 ## Verification Done
 
@@ -75,7 +93,8 @@ video_bridge_path=/usr/bin/video_rtp_bridge
   `telephone-event/8000`; SIP INFO is also accepted as a fallback.
 - WiBox smoke test:
   - `wibox-media-daemon` starts, binds SIP/RTP, creates `/tmp/pipe_sip`,
-    exits cleanly.
+    opens `/dev/ttySGK1`, and exits cleanly.
+  - Control FIFO can inject UART frames for local testing.
   - `audio_bridge` starts, creates audio pipes, exits cleanly.
   - `video_rtp_bridge` usage path works.
 

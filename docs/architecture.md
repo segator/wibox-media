@@ -183,6 +183,17 @@ Goal:
 - Daemon emits the same logical states currently published through scripts.
 - Stop starting `listener.sh` by default.
 
+Implementation:
+- `wibox-media-daemon` opens `/dev/ttySGK1` when
+  `serial_listener_enabled=1`.
+- `ALARM_REPORT` triggers the same outgoing SIP call path as the legacy
+  `/tmp/pipe_sip` `DING` message.
+- `/tmp/pipe_sip` also accepts `UART FB 11 00 1C` style injected frames as a
+  local test API.
+- `HANG_UP` and `CMD_STOP_RING` terminate an active SIP call.
+- `run.sh` starts `listener.sh` only for legacy `sip_media` fallback installs.
+- MQTT/Home Assistant publication remains in Phase 3.
+
 Verification:
 - Doorbell press triggers SIP call without `listener.sh`.
 - SIP incoming call still starts panel media context.

@@ -47,6 +47,10 @@ void config_init_defaults(wibox_config_t* config) {
     // Message Configuration
     strcpy(config->ding_message, "DING");
 
+    // Intercom serial listener
+    config->serial_listener_enabled = 1;
+    strcpy(config->intercom_device, "/dev/ttySGK1");
+
     // Audio Configuration
     config->audio_buffer_size = 160;
     config->pipe_retry_interval_ms = 2000;
@@ -121,6 +125,11 @@ static int parse_config_line(const char* line, wibox_config_t* config) {
     } else if (strcmp(key, "ding_message") == 0) {
         strncpy(config->ding_message, value, sizeof(config->ding_message) - 1);
         config->ding_message[sizeof(config->ding_message) - 1] = '\0';
+    } else if (strcmp(key, "serial_listener_enabled") == 0) {
+        config->serial_listener_enabled = atoi(value);
+    } else if (strcmp(key, "intercom_device") == 0) {
+        strncpy(config->intercom_device, value, sizeof(config->intercom_device) - 1);
+        config->intercom_device[sizeof(config->intercom_device) - 1] = '\0';
     } else if (strcmp(key, "audio_buffer_size") == 0) {
         config->audio_buffer_size = atoi(value);
     } else if (strcmp(key, "pipe_retry_interval_ms") == 0) {
@@ -199,6 +208,8 @@ void config_print(const wibox_config_t* config) {
     printf("sip_listen_pipe = %s\n", config->sip_listen_pipe);
     printf("audio_bridge_pipe = %s\n", config->audio_bridge_pipe);
     printf("ding_message = %s\n", config->ding_message);
+    printf("serial_listener_enabled = %d\n", config->serial_listener_enabled);
+    printf("intercom_device = %s\n", config->intercom_device);
     printf("audio_buffer_size = %d\n", config->audio_buffer_size);
     printf("pipe_retry_interval_ms = %d\n", config->pipe_retry_interval_ms);
     printf("pipe_retry_max_attempts = %d\n", config->pipe_retry_max_attempts);

@@ -22,6 +22,10 @@ typedef struct {
     // Message Configuration
     char ding_message[32];
 
+    // Intercom serial listener
+    int serial_listener_enabled;
+    char intercom_device[256];
+
     // Audio Configuration
     int audio_buffer_size;
     int pipe_retry_interval_ms;
