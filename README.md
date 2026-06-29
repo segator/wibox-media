@@ -96,6 +96,9 @@ Current summary:
 The imported audio stack and first audio+video RTP integration are documented in
 [`docs/sip_media.md`](docs/sip_media.md).
 
+The production migration plan is tracked in
+[`docs/architecture.md`](docs/architecture.md).
+
 ## Clean build artifacts
 
 ```bash
