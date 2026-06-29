@@ -133,3 +133,32 @@ Headers correctos combinados:
 ### Próximo
 - Extraer libadi de Sofia (R13210) o encontrar SDK v2.1+
 - O usar GET con SDK + SET con ioctls crudos (tenemos los datos del trace)
+
+## 2026-06-29 — Investigación SDK/Ghidra
+
+### Chip correcto
+- WiBox usa GK7102S (ARM1176JZF-S, ARMv6)
+- Nuestro SDK v2.0.0 target: `arm11-gcc-uClibc-linux-GK710XS` — correcto
+- Kernel modules son R13210 (Feb 2018)
+- Nuestra libadi.a es R10973 (Nov 2016)
+- 14 meses de diferencia — la interfaz ioctl de escritura cambió
+
+### Experimentos
+- SEGV bypass con sigsetjmp: funciona pero los datos NO cambian
+  → El SEGV ocurre ANTES de que libadi envíe el ioctl
+  → Las funciones SET están rotas estructuralmente, no solo en el return path
+
+### Ghidra
+- Ghidra headless import: OK (165s analysis)
+- Ghidra REST API (Docker biniamfd/ghidra-headless-rest): OK pero limitado 
+  (100 funciones max, no encuentra strings GADI)
+- PyGhidra: abre GUI (no útil)
+- objdump completo: 800K líneas, 32MB
+- Error strings encontradas en .rodata (VAs 0x0035b68f, 0x0035b711, 0x0035b75f)
+- Literal pools referenciados en función "error" (que es enorme, >100KB)
+- ioctl dinámico: Sofia llama a ioctl@0x303ce0 dinámicamente
+
+### Próximo
+- Encontrar SDK R13210 (GK710X v2.1+)
+- O extraer ioctls de Sofia (muchos bl <ioctl> encontrados)
+- Posible source: pan602389160/gk7102 con versión más reciente
