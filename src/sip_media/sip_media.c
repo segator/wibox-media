@@ -57,6 +57,7 @@ static time_t last_ai_pipe_retry = 0;
 static time_t last_ao_pipe_retry = 0;
 static int ai_pipe_retry_count = 0;
 static int ao_pipe_retry_count = 0;
+static int current_dtmf_payload_type = RTP_PAYLOAD_DTMF;
 
 // Configuration
 static wibox_config_t app_config;
@@ -387,6 +388,59 @@ static void handle_dtmf_event(unsigned char event, unsigned char volume, unsigne
     }
 }
 
+static pj_bool_t handle_sip_info_dtmf(pjsip_rx_data *rdata) {
+    const char *body;
+    int body_len;
+    char digit = 0;
+    int i;
+
+    if (!rdata->msg_info.msg->body || !rdata->msg_info.msg->body->data) {
+        PJ_LOG(3,(THIS_FILE, "SIP INFO without body"));
+        pjsip_endpt_respond_stateless(sip_endpt, rdata, 200, NULL, NULL, NULL);
+        return PJ_TRUE;
+    }
+
+    body = (const char *)rdata->msg_info.msg->body->data;
+    body_len = (int)rdata->msg_info.msg->body->len;
+    PJ_LOG(3,(THIS_FILE, "SIP INFO body:\n%.*s", body_len, body));
+
+    for (i = 0; i < body_len; i++) {
+        if (body[i] == '#' || body[i] == '*') {
+            digit = body[i];
+            break;
+        }
+    }
+    if (!digit) {
+        const char *signal = strstr(body, "Signal=");
+        if (!signal) signal = strstr(body, "Signal: ");
+        if (!signal) signal = strstr(body, "DTMF ");
+        if (!signal) signal = strstr(body, "digit=");
+        if (signal) {
+            const char *p;
+            for (p = signal; p < body + body_len; p++) {
+                if (*p == '#' || *p == '*' || (*p >= '0' && *p <= '9')) {
+                    digit = *p;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (digit) {
+        unsigned char event;
+        if (digit == '#') event = DTMF_EVENT_HASH;
+        else if (digit == '*') event = DTMF_EVENT_STAR;
+        else event = (unsigned char)(digit - '0');
+        PJ_LOG(3,(THIS_FILE, "SIP INFO DTMF detected: '%c'", digit));
+        handle_dtmf_event(event, 0, 0);
+    } else {
+        PJ_LOG(3,(THIS_FILE, "SIP INFO had no DTMF digit"));
+    }
+
+    pjsip_endpt_respond_stateless(sip_endpt, rdata, 200, NULL, NULL, NULL);
+    return PJ_TRUE;
+}
+
 static pj_bool_t parse_rtp_dtmf_event(unsigned char* rtp_packet, ssize_t packet_len) {
     unsigned char payload_type;
     int csrc_count;
@@ -402,7 +456,7 @@ static pj_bool_t parse_rtp_dtmf_event(unsigned char* rtp_packet, ssize_t packet_
     if (packet_len < 16) return PJ_FALSE;  // Too short for RTP + DTMF event
 
     payload_type = rtp_packet[1] & 0x7F;
-    if (payload_type != RTP_PAYLOAD_DTMF) {
+    if (payload_type != current_dtmf_payload_type) {
         return PJ_FALSE;
     }
 
@@ -1021,6 +1075,7 @@ static void* audio_input_handler(void* arg) {
 static void* audio_output_handler(void* arg) {
     unsigned char *rtp_packet;
     ssize_t bytes_read;
+    int logged_packets = 0;
 
     // Allocate buffer based on configuration
     rtp_packet = malloc(app_config.audio_buffer_size + 12);
@@ -1058,6 +1113,14 @@ static void* audio_output_handler(void* arg) {
                              (struct sockaddr*)&from_addr, &from_len);
 
         if (bytes_read > 12) {
+            unsigned char payload_type = rtp_packet[1] & 0x7F;
+            if (logged_packets < 40 || payload_type == current_dtmf_payload_type) {
+                PJ_LOG(3,(THIS_FILE, "Incoming RTP audio: pt=%u len=%d from=%s:%u dtmf_pt=%d",
+                          payload_type, (int)bytes_read,
+                          inet_ntoa(from_addr.sin_addr), ntohs(from_addr.sin_port),
+                          current_dtmf_payload_type));
+                logged_packets++;
+            }
             if (parse_rtp_dtmf_event(rtp_packet, bytes_read)) {
                 continue;
             }
@@ -1109,14 +1172,16 @@ static void* audio_output_handler(void* arg) {
 // Start audio session
 static void start_audio_session(const char* remote_ip, int remote_port) {
     pj_status_t status;
+    const sip_call_session_t *session;
 
     PJ_LOG(3,(THIS_FILE, "Starting audio session to %s:%d", remote_ip, remote_port));
 
-    // Ensure RTP socket is ready for network communication
-    if (ensure_rtp_socket_ready() < 0) {
-        PJ_LOG(1,(THIS_FILE, "RTP socket is not ready, audio may fail"));
-        // Continue anyway - socket might recover during call
+    session = sip_calling_get_session();
+    current_dtmf_payload_type = RTP_PAYLOAD_DTMF;
+    if (session && session->remote_dtmf_payload_type > 0) {
+        current_dtmf_payload_type = session->remote_dtmf_payload_type;
     }
+    PJ_LOG(3,(THIS_FILE, "Using DTMF RTP payload type %d", current_dtmf_payload_type));
 
     // Reset pipe status and retry counters
     last_ai_pipe_retry = 0;
@@ -1231,6 +1296,11 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata) {
 
         // Use unified module to handle CANCEL
         sip_calling_handle_incoming_cancel(rdata);
+
+    } else if (method->name.slen == 4 &&
+               strncmp(method->name.ptr, "INFO", 4) == 0) {
+        PJ_LOG(3,(THIS_FILE, "Processing INFO request"));
+        handle_sip_info_dtmf(rdata);
 
     } else {
         PJ_LOG(3,(THIS_FILE, "Unsupported method: %.*s", method->name.slen, method->name.ptr));

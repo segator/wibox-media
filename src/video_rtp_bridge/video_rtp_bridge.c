@@ -623,7 +623,7 @@ int main(int argc, char **argv)
     printf("[CONFIG] Streams 0/1/2 encode + H264 defaults...\n");
     set_frame_interval_stream(0);
     set_encode_format_stream(0, 0, 688, 576, 25);
-    set_h264_config_stream(0, 0x40000, 0x40000, 0x80000);
+    set_h264_config_stream(0, 0xc0000, 0x80000, 0x140000);
 
     set_frame_interval_stream(1);
     set_encode_format_stream(1, 1, 352, 300, 25);
