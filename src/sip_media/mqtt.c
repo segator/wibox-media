@@ -39,6 +39,11 @@ typedef struct {
     char device_name[128];
     char local_ip[64];
     int video_enabled;
+    int firmware_update_enabled;
+    char firmware_update_repo[128];
+    char firmware_update_version[64];
+    int firmware_update_available;
+    time_t firmware_update_last_check;
     mqtt_callbacks_t callbacks;
     void* user_data;
     pthread_t thread;
@@ -467,6 +472,66 @@ static void publish_button_config(void) {
     mqtt_publish_raw(topic, payload, 1);
 }
 
+static void publish_firmware_update_button_config(void) {
+    char topic[256];
+    char command_topic[256];
+    char uid[192];
+    char dev[512];
+    char payload[1536];
+
+    discovery_topic(topic, sizeof(topic), "button", "firmware_update_install");
+    topic_path(command_topic, sizeof(command_topic), "firmware/update/install/set");
+    unique_id(uid, sizeof(uid), "firmware_update_install");
+    device_json(dev, sizeof(dev));
+
+    snprintf(payload, sizeof(payload),
+             "{\"name\":\"Firmware Update Install\",\"unique_id\":\"%s\","
+             "\"command_topic\":\"%s\",\"payload_press\":\"PRESS\","
+             "\"availability_topic\":\"%s\",\"icon\":\"mdi:update\",%s}",
+             uid, command_topic, mqtt_state.base_topic, dev);
+    mqtt_publish_raw(topic, payload, 1);
+}
+
+static void publish_firmware_update_binary_sensor_config(void) {
+    char topic[256];
+    char state_topic[256];
+    char uid[192];
+    char dev[512];
+    char payload[1536];
+
+    discovery_topic(topic, sizeof(topic), "binary_sensor", "firmware_update_available");
+    topic_path(state_topic, sizeof(state_topic), "firmware/update/available");
+    unique_id(uid, sizeof(uid), "firmware_update_available");
+    device_json(dev, sizeof(dev));
+
+    snprintf(payload, sizeof(payload),
+             "{\"name\":\"Firmware Update Available\",\"unique_id\":\"%s\","
+             "\"state_topic\":\"%s\",\"payload_on\":\"ON\",\"payload_off\":\"OFF\","
+             "\"availability_topic\":\"%s\",\"icon\":\"mdi:update\",%s}",
+             uid, state_topic, mqtt_state.base_topic, dev);
+    mqtt_publish_raw(topic, payload, 1);
+}
+
+static void publish_firmware_update_version_config(void) {
+    char topic[256];
+    char state_topic[256];
+    char uid[192];
+    char dev[512];
+    char payload[1536];
+
+    discovery_topic(topic, sizeof(topic), "sensor", "firmware_update_version");
+    topic_path(state_topic, sizeof(state_topic), "firmware/update/version");
+    unique_id(uid, sizeof(uid), "firmware_update_version");
+    device_json(dev, sizeof(dev));
+
+    snprintf(payload, sizeof(payload),
+             "{\"name\":\"Firmware Update Version\",\"unique_id\":\"%s\","
+             "\"state_topic\":\"%s\",\"availability_topic\":\"%s\","
+             "\"icon\":\"mdi:tag\",%s}",
+             uid, state_topic, mqtt_state.base_topic, dev);
+    mqtt_publish_raw(topic, payload, 1);
+}
+
 static void publish_video_switch_config(void) {
     char topic[256];
     char state_topic[256];
@@ -536,10 +601,222 @@ static void clear_legacy_entities(void) {
     clear_retained_topic(topic);
 }
 
+static void clear_firmware_update_entities(void) {
+    char topic[256];
+
+    discovery_topic(topic, sizeof(topic), "button", "firmware_update_install");
+    clear_retained_topic(topic);
+    discovery_topic(topic, sizeof(topic), "binary_sensor", "firmware_update_available");
+    clear_retained_topic(topic);
+    discovery_topic(topic, sizeof(topic), "sensor", "firmware_update_version");
+    clear_retained_topic(topic);
+
+    topic_path(topic, sizeof(topic), "firmware/update/install");
+    clear_retained_topic(topic);
+    topic_path(topic, sizeof(topic), "firmware/update/available");
+    clear_retained_topic(topic);
+    topic_path(topic, sizeof(topic), "firmware/update/version");
+    clear_retained_topic(topic);
+}
+
+static int version_triplet(const char* input, int* major, int* minor, int* patch) {
+    char clean[64];
+
+    if (!input || !major || !minor || !patch) {
+        return -1;
+    }
+    while (*input == 'v' || *input == 'V') input++;
+    if (strncmp(input, "dev-", 4) == 0) {
+        return -2;
+    }
+    strncpy(clean, input, sizeof(clean) - 1);
+    clean[sizeof(clean) - 1] = '\0';
+    if (sscanf(clean, "%d.%d.%d", major, minor, patch) != 3) {
+        return -1;
+    }
+    return 0;
+}
+
+static int version_is_newer(const char* remote, const char* local) {
+    int r0, r1, r2;
+    int l0, l1, l2;
+    int rv;
+    int lv;
+
+    rv = version_triplet(remote, &r0, &r1, &r2);
+    if (rv != 0) {
+        return 0;
+    }
+    lv = version_triplet(local, &l0, &l1, &l2);
+    if (lv != 0) {
+        return 1;
+    }
+    if (r0 != l0) return r0 > l0;
+    if (r1 != l1) return r1 > l1;
+    return r2 > l2;
+}
+
+static int read_command_output(const char* command, char* output, size_t output_size) {
+    FILE* fp;
+    char line[256];
+    size_t used = 0;
+
+    if (!command || !output || output_size == 0) {
+        return -1;
+    }
+
+    output[0] = '\0';
+    fp = popen(command, "r");
+    if (!fp) {
+        return -1;
+    }
+    while (fgets(line, sizeof(line), fp)) {
+        size_t len = strlen(line);
+        if (used + len >= output_size) {
+            len = output_size - used - 1;
+        }
+        if ((int)len <= 0) {
+            break;
+        }
+        memcpy(output + used, line, len);
+        used += len;
+        output[used] = '\0';
+        if (used + 1 >= output_size) {
+            break;
+        }
+    }
+    pclose(fp);
+    return output[0] ? 0 : -1;
+}
+
+static int github_latest_release(const char* repo, char* version, size_t version_size,
+                                 char* download_url, size_t download_url_size) {
+    char command[512];
+    char json[8192];
+    const char* p;
+
+    if (!repo || !repo[0] || !version || version_size == 0 || !download_url || download_url_size == 0) {
+        return -1;
+    }
+
+    snprintf(command, sizeof(command),
+             "wget -qO- 'https://api.github.com/repos/%s/releases/latest' 2>/dev/null",
+             repo);
+    if (read_command_output(command, json, sizeof(json)) != 0) {
+        return -1;
+    }
+
+    p = strstr(json, "\"tag_name\":\"");
+    if (!p) {
+        return -1;
+    }
+    p += strlen("\"tag_name\":\"");
+    {
+        const char* end = strchr(p, '"');
+        size_t len;
+        if (!end) {
+            return -1;
+        }
+        len = (size_t)(end - p);
+        if (len >= version_size) len = version_size - 1;
+        memcpy(version, p, len);
+        version[len] = '\0';
+    }
+
+    p = json;
+    while ((p = strstr(p, "\"browser_download_url\":\"")) != NULL) {
+        const char* start;
+        const char* end;
+        size_t len;
+
+        start = p + strlen("\"browser_download_url\":\"");
+        end = strchr(start, '"');
+        if (!end) {
+            return -1;
+        }
+        len = (size_t)(end - start);
+        if (len >= download_url_size) len = download_url_size - 1;
+        memcpy(download_url, start, len);
+        download_url[len] = '\0';
+        if (strstr(download_url, ".img")) {
+            return 0;
+        }
+        p = end + 1;
+    }
+
+    return -1;
+}
+
+static void firmware_update_check_and_publish(void) {
+    char remote_version[64];
+    char download_url[512];
+    char local_version[64];
+    FILE* fp;
+
+    if (!mqtt_state.firmware_update_enabled || !mqtt_state.connected) {
+        return;
+    }
+
+    mqtt_state.firmware_update_last_check = time(NULL);
+    local_version[0] = '\0';
+    fp = fopen("/etc/wibox-release", "r");
+    if (fp) {
+        while (fgets(local_version, sizeof(local_version), fp)) {
+            if (strncmp(local_version, "WIBOX_VERSION=", 14) == 0) {
+                memmove(local_version, local_version + 14, strlen(local_version + 14) + 1);
+                local_version[strcspn(local_version, "\r\n")] = '\0';
+                break;
+            }
+            local_version[0] = '\0';
+        }
+        fclose(fp);
+    } else {
+        strncpy(local_version, WIBOX_VERSION, sizeof(local_version) - 1);
+        local_version[sizeof(local_version) - 1] = '\0';
+    }
+
+    if (github_latest_release(mqtt_state.firmware_update_repo, remote_version, sizeof(remote_version),
+                              download_url, sizeof(download_url)) != 0) {
+        printf("%s: firmware update check failed for repo %s\n", MQTT_FILE,
+               mqtt_state.firmware_update_repo);
+        return;
+    }
+
+    strncpy(mqtt_state.firmware_update_version, remote_version, sizeof(mqtt_state.firmware_update_version) - 1);
+    mqtt_state.firmware_update_version[sizeof(mqtt_state.firmware_update_version) - 1] = '\0';
+    mqtt_state.firmware_update_available = version_is_newer(remote_version, local_version);
+    publish_suffix("firmware/update/version", mqtt_state.firmware_update_version, 1);
+    publish_suffix("firmware/update/available", mqtt_state.firmware_update_available ? "ON" : "OFF", 1);
+    printf("%s: firmware update check local=%s remote=%s available=%d url=%s\n",
+           MQTT_FILE, local_version, remote_version, mqtt_state.firmware_update_available, download_url);
+}
+
+static void start_firmware_update_install(void) {
+    int rc;
+
+    if (!mqtt_state.firmware_update_enabled || !mqtt_state.connected) {
+        return;
+    }
+
+    rc = system("/usr/bin/firmware_update.sh >/tmp/firmware_update.log 2>&1 &");
+    if (rc != 0) {
+        printf("%s: failed to launch firmware update script rc=%d\n", MQTT_FILE, rc);
+    } else {
+        printf("%s: launched firmware update script\n", MQTT_FILE);
+    }
+}
+
 void mqtt_publish_discovery(void) {
     if (!mqtt_state.enabled || !mqtt_state.connected) return;
 
     clear_legacy_entities();
+    if (mqtt_state.firmware_update_enabled) {
+        publish_firmware_update_button_config();
+        publish_firmware_update_binary_sensor_config();
+        publish_firmware_update_version_config();
+    } else {
+        clear_firmware_update_entities();
+    }
     publish_button_config();
     publish_sensor_config("media_state", "Media State", "media/state", "", "phone");
     publish_sensor_config("firmware_version", "Firmware Version", "firmware/version", "", "tag");
@@ -647,6 +924,10 @@ static void handle_mqtt_message(const char* topic, const char* payload) {
             printf("%s: config request received\n", MQTT_FILE);
             mqtt_publish_discovery();
             mqtt_publish_online();
+            mqtt_publish_firmware_version();
+            if (mqtt_state.firmware_update_enabled) {
+                firmware_update_check_and_publish();
+            }
         }
         return;
     }
@@ -666,6 +947,15 @@ static void handle_mqtt_message(const char* topic, const char* payload) {
             mqtt_state.callbacks.set_video_enabled(1, mqtt_state.user_data);
         } else if (payload_is_off(payload) && mqtt_state.callbacks.set_video_enabled) {
             mqtt_state.callbacks.set_video_enabled(0, mqtt_state.user_data);
+        }
+        return;
+    }
+
+    topic_path(expected, sizeof(expected), "firmware/update/install/set");
+    if (strcmp(topic, expected) == 0) {
+        if (payload_is_on(payload)) {
+            printf("%s: firmware update install requested\n", MQTT_FILE);
+            start_firmware_update_install();
         }
         return;
     }
@@ -784,6 +1074,9 @@ static void* mqtt_thread_func(void* arg) {
         mqtt_publish_online();
         mqtt_publish_media_state("idle");
         mqtt_publish_firmware_version();
+        if (mqtt_state.firmware_update_enabled) {
+            firmware_update_check_and_publish();
+        }
         publish_suffix("door/unlocked", "OFF", 1);
         mqtt_publish_video_enabled(mqtt_state.video_enabled);
         mqtt_publish_wifi_stats();
@@ -792,6 +1085,11 @@ static void* mqtt_thread_func(void* arg) {
             time_t now = time(NULL);
             if (mqtt_process_once() < 0) {
                 break;
+            }
+            if (mqtt_state.firmware_update_enabled &&
+                mqtt_state.firmware_update_last_check != 0 &&
+                now - mqtt_state.firmware_update_last_check >= 86400) {
+                firmware_update_check_and_publish();
             }
             if (now - last_ping >= 30) {
                 if (mqtt_send_packet(0xc0, (const unsigned char*)"", 0) < 0) {
@@ -835,6 +1133,10 @@ int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
     strncpy(mqtt_state.ha_prefix, app_config->mqtt_homeassistant_prefix, sizeof(mqtt_state.ha_prefix) - 1);
     strncpy(mqtt_state.local_ip, local_ip ? local_ip : "0.0.0.0", sizeof(mqtt_state.local_ip) - 1);
     mqtt_state.video_enabled = app_config->video_enabled;
+    mqtt_state.firmware_update_enabled = app_config->firmware_update_enabled;
+    strncpy(mqtt_state.firmware_update_repo, app_config->firmware_update_repo,
+            sizeof(mqtt_state.firmware_update_repo) - 1);
+    mqtt_state.firmware_update_last_check = 0;
 
     get_hostname(hostname, sizeof(hostname));
     if (app_config->mqtt_device_id[0]) {

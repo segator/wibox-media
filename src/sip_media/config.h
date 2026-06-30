@@ -31,6 +31,8 @@ typedef struct {
     char mqtt_base_topic[128];
     char mqtt_device_id[128];
     char mqtt_device_name[128];
+    int firmware_update_enabled;
+    char firmware_update_repo[128];
 
     // Prometheus metrics exporter
     int prometheus_enabled;

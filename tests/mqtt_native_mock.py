@@ -158,6 +158,13 @@ def main():
     if not any(topic.endswith("_firmware_build_timestamp/config") for topic, _ in published):
         print("missing firmware build timestamp Home Assistant discovery publish", file=sys.stderr)
         return 1
+    for topic, payload in published:
+        if topic.endswith("_firmware_update_available/config") or \
+           topic.endswith("_firmware_update_version/config") or \
+           topic.endswith("_firmware_update_install/config"):
+            if payload not in ("", None):
+                print("unexpected firmware update discovery publish in disabled test", file=sys.stderr)
+                return 1
     return 0
 
 

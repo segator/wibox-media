@@ -35,7 +35,11 @@ umount -l ${DATAPART} || ( echo "[!] Error while umounting, cancelling!"; exit 2
 echo "[*] Flashing update"
 dd if=${UPDATE_FILE} of=${DATAPART} bs=${BLOCK}
 sync
-fsync ${DATAPART}
+if command -v fsync >/dev/null 2>&1; then
+  fsync ${DATAPART}
+elif busybox fsync ${DATAPART} >/dev/null 2>&1; then
+  :
+fi
 
 echo "[*] Checking current content - ${COUNT}"
 POST_UPDATE_HASH=$(dd if=${DATAPART} bs=${BLOCK} count=${COUNT} | md5sum - | cut -d' ' -f1)

@@ -75,6 +75,19 @@ wibox-media-<version>.img
 
 Then use that file wherever this guide says `release/latest`.
 
+Current published release:
+
+<!-- x-release-please-start-version -->
+v0.4.6
+<!-- x-release-please-end -->
+
+For example, the matching GitHub Release asset is:
+
+```bash
+VERSION="v0.4.6"  # x-release-please-version
+wget -O wibox-media.img "https://github.com/aymerici/wibox-media/releases/download/${VERSION}/wibox-media-${VERSION}.img"
+```
+
 Building locally is only needed if you want to develop the firmware or verify a
 change before release. The repository already includes the committed `mtd4`
 factory image and the minimal Goke SDK files used by the build so GitHub
@@ -377,6 +390,8 @@ mqtt_host=192.168.10.2
 mqtt_user=mqtt
 mqtt_pass=password
 mqtt_homeassistant_prefix=homeassistant
+firmware_update_enabled=1
+firmware_update_repo=aymerici/wibox-media
 
 prometheus_enabled=1
 prometheus_port=9617
@@ -402,6 +417,12 @@ reboot
 `make flash-dry-run` builds the image, uploads or reuses `/tmp/update.img`,
 checks hashes and stops before writing flash. `make flash` automatically runs
 `backup-mtd4` before writing.
+
+The same update path is also available on the WiBox itself:
+
+```sh
+/usr/bin/firmware_update.sh
+```
 
 ## Runtime Behavior
 
@@ -465,6 +486,9 @@ sensor.firmware_build_timestamp
 binary_sensor.door_unlocked
 sensor.wifi_rssi
 switch.video_enabled
+binary_sensor.firmware_update_available
+sensor.firmware_update_version
+button.firmware_update_install
 ```
 
 `sensor.media_state` is the main call lifecycle state. It moves through
@@ -473,6 +497,9 @@ switch.video_enabled
 `binary_sensor.door_unlocked` pulses `on` for a short time when the door is
 successfully unlocked, then returns to `off`.
 `switch.video_enabled` controls whether outgoing SIP calls negotiate video.
+`binary_sensor.firmware_update_available`,
+`sensor.firmware_update_version` and `button.firmware_update_install` are only
+published when `firmware_update_enabled=1`.
 
 
 The door command is high-level:

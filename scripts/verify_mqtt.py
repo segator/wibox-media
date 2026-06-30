@@ -204,6 +204,9 @@ def main():
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_version/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_commit/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_build_timestamp/config",
+        f"{MQTT_HA_PREFIX}/button/{HA_ID}_firmware_update_install/config",
+        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_firmware_update_available/config",
+        f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_update_version/config",
         f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_door_unlocked/config",
         f"{MQTT_HA_PREFIX}/switch/{HA_ID}_video_enabled/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_wifi_rssi/config",
@@ -242,6 +245,12 @@ def main():
                   no_device_class=True, expected_icon="mdi:source-commit")
     assert_config(seen, "sensor", "firmware_build_timestamp", f"{MQTT_BASE_TOPIC}/firmware/build_timestamp",
                   expected_device_class="timestamp", expected_icon="mdi:clock-outline")
+    assert_command_config(seen, "button", "firmware_update_install", f"{MQTT_BASE_TOPIC}/firmware/update/install/set",
+                          expected_icon="mdi:update")
+    assert_config(seen, "binary_sensor", "firmware_update_available", f"{MQTT_BASE_TOPIC}/firmware/update/available",
+                  expected_icon="mdi:update")
+    assert_config(seen, "sensor", "firmware_update_version", f"{MQTT_BASE_TOPIC}/firmware/update/version",
+                  no_device_class=True, expected_icon="mdi:tag")
     assert_absent(seen, f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_last_ring/config")
     assert_absent(seen, f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_last_unlock/config")
     assert_absent(seen, f"{MQTT_BASE_TOPIC}/door/last_unlock")

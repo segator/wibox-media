@@ -42,6 +42,7 @@ int main(void) {
     strcpy(config.mqtt_device_name, "WiBox Test");
     strcpy(config.mqtt_homeassistant_prefix, "homeassistant");
     config.video_enabled = 1;
+    config.firmware_update_enabled = 0;
 
     callbacks.open_door = on_open_door;
     callbacks.set_video_enabled = on_video_enabled;

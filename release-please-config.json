@@ -3,7 +3,10 @@
     ".": {
       "release-type": "simple",
       "package-name": "wibox-media",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "README.md"
+      ]
     }
   }
 }

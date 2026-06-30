@@ -87,6 +87,8 @@ mqtt_homeassistant_prefix=homeassistant
 mqtt_base_topic=
 mqtt_device_id=
 mqtt_device_name=
+firmware_update_enabled=1
+firmware_update_repo=aymerici/wibox-media
 ```
 
 ## Local Control API
