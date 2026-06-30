@@ -35,6 +35,12 @@ make deploy-runtime
 make status
 ```
 
+Verify MQTT/Home Assistant discovery and retained runtime state:
+
+```bash
+MQTT_HOST=192.168.10.2 MQTT_USER=mqtt MQTT_PASS=password make verify-mqtt
+```
+
 To persist the image to `/usr` (`mtd4`), use the guarded flash target:
 
 ```bash

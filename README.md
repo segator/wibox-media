@@ -43,6 +43,12 @@ make deploy-runtime
 make status
 ```
 
+Verify retained MQTT discovery and state with:
+
+```bash
+MQTT_HOST=192.168.10.2 MQTT_USER=mqtt MQTT_PASS=password make verify-mqtt
+```
+
 Override connection settings when needed:
 
 ```bash

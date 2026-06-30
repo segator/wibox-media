@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+import json
+import os
+import socket
+import struct
+import sys
+import time
+
+
+def env(name, default=""):
+    return os.environ.get(name, default)
+
+
+MQTT_HOST = env("MQTT_HOST", "127.0.0.1")
+MQTT_PORT = int(env("MQTT_PORT", "1883"))
+MQTT_USER = env("MQTT_USER")
+MQTT_PASS = env("MQTT_PASS")
+MQTT_HA_PREFIX = env("MQTT_HA_PREFIX", "homeassistant").strip("/")
+MQTT_DEVICE = env("MQTT_DEVICE", "IDS7938jrvc")
+MQTT_BASE_TOPIC = env("MQTT_BASE_TOPIC", f"wibox/{MQTT_DEVICE}").strip("/")
+TIMEOUT = float(env("MQTT_VERIFY_TIMEOUT", "8"))
+
+DEVICE_SLUG = MQTT_DEVICE.lower()
+HA_ID = f"wibox_{DEVICE_SLUG}"
+
+
+def enc_str(value):
+    data = value.encode("utf-8")
+    return struct.pack("!H", len(data)) + data
+
+
+def enc_remaining(length):
+    out = bytearray()
+    while True:
+        digit = length % 128
+        length //= 128
+        if length:
+            digit |= 0x80
+        out.append(digit)
+        if not length:
+            return bytes(out)
+
+
+def packet(packet_type, body):
+    return bytes([packet_type]) + enc_remaining(len(body)) + body
+
+
+def read_exact(sock, count):
+    data = b""
+    while len(data) < count:
+        chunk = sock.recv(count - len(data))
+        if not chunk:
+            raise EOFError("broker closed connection")
+        data += chunk
+    return data
+
+
+def read_packet(sock):
+    header = read_exact(sock, 1)[0]
+    multiplier = 1
+    remaining = 0
+    while True:
+        digit = read_exact(sock, 1)[0]
+        remaining += (digit & 0x7F) * multiplier
+        if not (digit & 0x80):
+            break
+        multiplier *= 128
+        if multiplier > 128 * 128 * 128:
+            raise ValueError("invalid MQTT remaining length")
+    return header, read_exact(sock, remaining)
+
+
+def connect():
+    sock = socket.create_connection((MQTT_HOST, MQTT_PORT), timeout=TIMEOUT)
+    sock.settimeout(TIMEOUT)
+
+    flags = 0x02
+    if MQTT_USER:
+        flags |= 0x80
+    if MQTT_PASS:
+        flags |= 0x40
+
+    client_id = f"wibox-verify-{int(time.time())}"
+    body = enc_str("MQTT") + bytes([4, flags]) + struct.pack("!H", 30)
+    body += enc_str(client_id)
+    if MQTT_USER:
+        body += enc_str(MQTT_USER)
+    if MQTT_PASS:
+        body += enc_str(MQTT_PASS)
+    sock.sendall(packet(0x10, body))
+
+    header, data = read_packet(sock)
+    if header != 0x20 or len(data) < 2 or data[1] != 0:
+        code = data[1] if len(data) > 1 else "?"
+        raise RuntimeError(f"MQTT CONNACK failed, code={code}")
+    return sock
+
+
+def subscribe(sock, topics):
+    body = struct.pack("!H", 1)
+    for topic in topics:
+        body += enc_str(topic) + b"\x00"
+    sock.sendall(packet(0x82, body))
+
+    header, data = read_packet(sock)
+    if header != 0x90:
+        raise RuntimeError(f"expected SUBACK, got packet type 0x{header:02x}")
+    failures = [qos for qos in data[2:] if qos == 0x80]
+    if failures:
+        raise RuntimeError("broker rejected one or more subscriptions")
+
+
+def collect(sock, topics):
+    wanted = set(topics)
+    seen = {}
+    deadline = time.time() + TIMEOUT
+    while time.time() < deadline and wanted - set(seen):
+        try:
+            header, data = read_packet(sock)
+        except socket.timeout:
+            break
+        if header >> 4 != 3:
+            continue
+
+        qos = (header >> 1) & 0x03
+        pos = 0
+        topic_len = struct.unpack("!H", data[pos:pos + 2])[0]
+        pos += 2
+        topic = data[pos:pos + topic_len].decode("utf-8")
+        pos += topic_len
+        if qos:
+            pos += 2
+        payload = data[pos:].decode("utf-8", errors="replace")
+        if topic in wanted:
+            seen[topic] = payload
+    return seen
+
+
+def assert_present(seen, topic):
+    payload = seen.get(topic)
+    if payload is None or payload == "":
+        raise AssertionError(f"missing retained payload for {topic}")
+    return payload
+
+
+def assert_config(seen, component, object_id, expected_state_topic, no_device_class=False):
+    topic = f"{MQTT_HA_PREFIX}/{component}/{HA_ID}_{object_id}/config"
+    payload = assert_present(seen, topic)
+    try:
+        config = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(f"invalid JSON for {topic}: {exc}") from exc
+
+    state_topic = config.get("state_topic")
+    if state_topic != expected_state_topic:
+        raise AssertionError(f"{topic} state_topic={state_topic!r}, expected {expected_state_topic!r}")
+    if no_device_class and "device_class" in config:
+        raise AssertionError(f"{topic} should not set device_class")
+    return config
+
+
+def assert_command_config(seen, component, object_id, expected_command_topic):
+    topic = f"{MQTT_HA_PREFIX}/{component}/{HA_ID}_{object_id}/config"
+    payload = assert_present(seen, topic)
+    try:
+        config = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(f"invalid JSON for {topic}: {exc}") from exc
+
+    command_topic = config.get("command_topic")
+    if command_topic != expected_command_topic:
+        raise AssertionError(f"{topic} command_topic={command_topic!r}, expected {expected_command_topic!r}")
+    return config
+
+
+def main():
+    topics = [
+        MQTT_BASE_TOPIC,
+        f"{MQTT_BASE_TOPIC}/media/state",
+        f"{MQTT_BASE_TOPIC}/wifi/rssi",
+        f"{MQTT_BASE_TOPIC}/video/enabled",
+        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_call_active/config",
+        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_sip_call_active/config",
+        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_video_active/config",
+        f"{MQTT_HA_PREFIX}/button/{HA_ID}_open_door/config",
+        f"{MQTT_HA_PREFIX}/switch/{HA_ID}_video_enabled/config",
+        f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_wifi_rssi/config",
+    ]
+
+    print(f"[*] Connecting to MQTT broker {MQTT_HOST}:{MQTT_PORT}")
+    sock = connect()
+    try:
+        subscribe(sock, topics)
+        seen = collect(sock, topics)
+    finally:
+        sock.close()
+
+    assert_present(seen, MQTT_BASE_TOPIC)
+    media_state = assert_present(seen, f"{MQTT_BASE_TOPIC}/media/state")
+    wifi_rssi = assert_present(seen, f"{MQTT_BASE_TOPIC}/wifi/rssi")
+    video_enabled = assert_present(seen, f"{MQTT_BASE_TOPIC}/video/enabled")
+
+    assert_config(seen, "binary_sensor", "call_active", f"{MQTT_BASE_TOPIC}/call/active", no_device_class=True)
+    assert_config(seen, "binary_sensor", "sip_call_active", f"{MQTT_BASE_TOPIC}/sip/active", no_device_class=True)
+    assert_config(seen, "binary_sensor", "video_active", f"{MQTT_BASE_TOPIC}/video/active", no_device_class=True)
+    assert_command_config(seen, "button", "open_door", f"{MQTT_BASE_TOPIC}/door/open/set")
+    assert_config(seen, "switch", "video_enabled", f"{MQTT_BASE_TOPIC}/video/enabled")
+    assert_config(seen, "sensor", "wifi_rssi", f"{MQTT_BASE_TOPIC}/wifi/rssi")
+
+    print(f"[*] MQTT discovery/state OK for {MQTT_BASE_TOPIC}")
+    print(f"    media/state={media_state} wifi/rssi={wifi_rssi} video/enabled={video_enabled}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(f"[!] MQTT verification failed: {exc}", file=sys.stderr)
+        sys.exit(1)
