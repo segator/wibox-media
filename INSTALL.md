@@ -33,7 +33,18 @@ root / aszeno
 Unplug the WiBox before opening the case or attaching serial wires. Do not
 solder while the board is powered.
 
-Serial: `115200`, no hardware flow control.
+Use a serial terminal such as `picocom` or `minicom`. Configure it for `115200`
+baud and disable hardware flow control.
+
+```bash
+picocom -b 115200 /dev/ttyUSB0
+```
+
+Or:
+
+```bash
+minicom -s
+```
 
 | WiBox board | USB TTL adapter |
 |-------------|-----------------|
@@ -78,6 +89,10 @@ done
 ```
 
 ## 4. Configure Persistent WiFi
+
+This is required before flashing. If this file is missing or wrong, the custom
+firmware will not reconnect to WiFi after reboot and you will need serial
+access to fix it.
 
 Create `/mnt/mtd/wpa_supplicant.conf`:
 
@@ -153,6 +168,9 @@ reboot
 
 Use this when Linux boots and serial shell works.
 
+Use `picocom`, `minicom`, or an equivalent serial terminal at `115200` baud with
+hardware flow control disabled.
+
 Transfer `release/latest` to `/tmp/update.img`, then run:
 
 ```sh
@@ -170,6 +188,9 @@ sync
 ## 9. Recovery Via U-Boot
 
 Use this when Linux does not boot far enough for a shell.
+
+Connect the serial terminal, power the board, and press Enter immediately.
+U-Boot waits for input for about one second after power is applied.
 
 ```sh
 mw.b 0xC1000000 ff 00b10000

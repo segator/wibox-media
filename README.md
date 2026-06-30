@@ -73,20 +73,28 @@ $HOME/config/GK710X_LinuxSDK_v2.0.0
 
 On the stock WiBox:
 
-- Telnet access on B007/B010, or serial access.
+- Telnet access on B007/B010, or serial access for B013/newer.
 - WiFi credentials ready for `/mnt/mtd/wpa_supplicant.conf`.
-- Serial recovery access prepared before first flash.
 
 Safety notes:
 
 - Unplug the WiBox before opening the case or attaching serial wires.
 - Do not solder while the board is powered.
-- Prepare serial recovery before first flash. A bad `/usr` image can stop WiFi
-  from coming up.
+- Serial recovery is recommended before first flash, but it is not required for
+  B007/B010 if telnet works. It becomes required if the device cannot be
+  reached over the network after flashing.
 
 ## Fresh Device Journey
 
-### 1. Check Firmware Version
+Choose one path:
+
+- **Path A: B007/B010 with telnet.** Use the network install steps below.
+- **Path B: B013/newer or no telnet.** Use
+  [serial install or recovery](#path-b-serial-install-or-recovery).
+
+### Path A: B007/B010 With Telnet
+
+#### 1. Log In
 
 B007/B010 stock firmware normally exposes telnet:
 
@@ -102,35 +110,9 @@ user: root
 pass: aszeno
 ```
 
-If the unit is B013 or newer, telnet is blocked. Skip network installation and
-use serial.
+If login fails and the unit is B013 or newer, use Path B.
 
-### 2. Prepare Serial Access
-
-The serial console is `ttySGK2`, `115200`, no hardware flow control.
-
-| WiBox board | USB TTL adapter |
-|-------------|-----------------|
-| GND         | GND             |
-| TX          | RX              |
-| RX          | TX              |
-
-![Serial connector](docs/img/serial.jpg)
-![WiBox board](docs/img/board.jpg)
-![WiBox back board](docs/img/backboard.jpg)
-
-If nothing appears on serial during boot, enter U-Boot and set:
-
-```sh
-setenv consoledev 'ttySGK0'
-saveenv
-reset
-```
-
-Serial is mandatory for B013 or newer firmware and is the recovery path if the
-custom image does not boot.
-
-### 3. Back Up the Factory Flash
+#### 2. Back Up the Factory Flash
 
 At minimum, keep a copy of `mtd4`, the `/usr` cramfs partition. This repository
 builds the custom image by extracting that partition and replacing selected
@@ -163,7 +145,13 @@ After the custom firmware is running, future backups can use:
 make backup-mtd4
 ```
 
-### 4. Configure Persistent WiFi
+#### 3. Configure Persistent WiFi
+
+This step is critical. Configure it before flashing the custom image.
+
+If `/mnt/mtd/wpa_supplicant.conf` is missing or wrong, the custom firmware will
+not be able to join your WiFi network after reboot. You will lose network access
+and will need serial access to fix it.
 
 Create `/mnt/mtd/wpa_supplicant.conf` on the WiBox:
 
@@ -181,7 +169,7 @@ network={
 
 The generated firmware uses this file to bring WiFi back after boot.
 
-### 5. Build the Firmware on Your Computer
+#### 4. Build the Firmware on Your Computer
 
 Build the project Docker image:
 
@@ -206,7 +194,7 @@ release/image-YYMMDD-HHMM
 release/latest -> image-YYMMDD-HHMM
 ```
 
-### 6. Verify the Local Image
+#### 5. Verify the Local Image
 
 Before the first flash, only local verification is possible:
 
@@ -222,7 +210,7 @@ make verify-device
 make verify
 ```
 
-### 7. Configure SIP, Video and MQTT
+#### 6. Configure SIP, Video and MQTT
 
 The runtime config lives on the WiBox:
 
@@ -262,7 +250,7 @@ Set `video_enabled=0` for intercom installations without video support.
 
 Do not commit real MQTT credentials. Store them only on the device.
 
-### 8. First Flash From Stock Firmware
+#### 7. First Flash From Stock Firmware
 
 On B007/B010 stock firmware, upload the generated image with `nc`.
 
@@ -290,7 +278,7 @@ sync
 reboot
 ```
 
-### 9. Later Flashes With Custom Firmware
+#### 8. Later Flashes With Custom Firmware
 
 After this firmware is installed, dropbear SSH is available and future updates
 should use the guarded tooling:
@@ -305,6 +293,59 @@ reboot
 `make flash-dry-run` builds the image, uploads or reuses `/tmp/update.img`,
 checks hashes and stops before writing flash. `make flash` automatically runs
 `backup-mtd4` before writing.
+
+### Path B: Serial Install Or Recovery
+
+Use this path for B013/newer firmware, for devices without telnet, or when a
+previous flash broke network access.
+
+Use a serial terminal such as `minicom` or `picocom`. Configure it for
+`115200` baud and disable hardware flow control.
+
+Example:
+
+```bash
+picocom -b 115200 /dev/ttyUSB0
+```
+
+Or with minicom:
+
+```bash
+minicom -s
+```
+
+The WiBox console is `ttySGK2`.
+
+| WiBox board | USB TTL adapter |
+|-------------|-----------------|
+| GND         | GND             |
+| TX          | RX              |
+| RX          | TX              |
+
+![Serial connector](docs/img/serial.jpg)
+![WiBox board](docs/img/board.jpg)
+![WiBox back board](docs/img/backboard.jpg)
+
+If nothing appears on serial during boot, enter U-Boot and set:
+
+```sh
+setenv consoledev 'ttySGK0'
+saveenv
+reset
+```
+
+From a serial shell, transfer `release/latest` to `/tmp/update.img` and write
+it:
+
+```sh
+/usr/bin/update_firmware.sh
+reboot
+```
+
+If Linux does not boot far enough for a shell, use the
+[U-Boot recovery](#3-recovery-via-u-boot) steps. To enter U-Boot, connect the
+serial console, power the board, and press Enter immediately; the bootloader
+wait window is about one second after power is applied.
 
 ## Runtime Behavior
 
@@ -416,6 +457,9 @@ device updater.
 Use this if Linux boots but WiFi or normal startup is broken and you have serial
 shell access.
 
+Use `picocom`, `minicom`, or an equivalent serial terminal at `115200` baud with
+hardware flow control disabled.
+
 On the WiBox:
 
 ```sh
@@ -442,6 +486,10 @@ sync
 ### 3. Recovery Via U-Boot
 
 Use this when Linux does not boot far enough to get a shell.
+
+Connect with `picocom`, `minicom`, or an equivalent serial terminal at `115200`
+baud with hardware flow control disabled. Power the board and press Enter
+immediately; U-Boot only waits for about one second after power is applied.
 
 From U-Boot:
 
