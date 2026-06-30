@@ -227,7 +227,10 @@ Verification:
 - WiBox fake-client test published Home Assistant discovery and initial state.
 - WiBox fake-client test consumed `video/enabled/set OFF` and updated daemon
   state without crashing.
-- Real broker verification is pending corrected runtime auth/ACL.
+- Real broker verification passed after credentials/ACL were corrected:
+  Home Assistant discovery topics are retained for all WiBox entities, runtime
+  state is published under `wibox/IDS7938jrvc/#`, and
+  `video/enabled/set OFF/ON` is consumed by the daemon.
 
 ### Phase 4: Integrate Video Worker
 

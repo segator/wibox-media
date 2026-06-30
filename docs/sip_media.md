@@ -132,13 +132,13 @@ bounded local test, and then stops audio and the panel context.
   video, automatic-mode DTMF `#`, door unlock and cleanup on BYE.
 - Local MQTT mock test verifies the native MQTT client without mosquitto
   binaries.
-- Real broker handshake reaches the MQTT broker at runtime, but the current
-  broker credentials/ACL reject CONNECT with CONNACK code 5 (`not authorized`).
+- Real MQTT broker/Home Assistant verification passed:
+  - retained discovery topics exist for 10 WiBox entities;
+  - retained state topics show the WiBox online and idle;
+  - `video/enabled/set OFF/ON` commands are consumed by the daemon.
 
 ## Still To Verify
 
-- Real MQTT/Home Assistant discovery once broker credentials/ACL accept CONNECT
-  from the WiBox.
 - H.264 RTP compatibility with Asterisk/WebRTC/SIP-HASS.
 - Long-call stability and cleanup around the 90s MCU auto-stop behavior.
 - Daylight video quality; low light adds analog sensor/CVBS noise that bitrate
