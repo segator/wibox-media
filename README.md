@@ -521,12 +521,12 @@ verification.
 
 GitHub Actions is intentionally small:
 
-- `CI` runs the host MQTT regression test on pushes and pull requests.
-- `Firmware Image` runs on pushes to `main`, pull requests, manual dispatches
+- `CI` runs the quick host MQTT regression test on pushes and pull requests.
+- `Firmware` runs on pushes to `main`, pull requests, manual dispatches
   and releases. It builds the final image, verifies it, and uploads a workflow
   artifact every time.
 - `Release Please` manages changelog and GitHub release PRs.
-- On published releases, `Firmware Image` also attaches the `.img` and checksum
+- On published releases, `Firmware` also attaches the `.img` and checksum
   files to the GitHub Release.
 
 The firmware image workflow builds from the committed `mtd4` backup and

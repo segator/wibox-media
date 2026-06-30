@@ -1,4 +1,4 @@
-name: Firmware Image
+name: Firmware
 
 on:
   push:
