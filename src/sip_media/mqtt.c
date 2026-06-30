@@ -37,7 +37,7 @@ typedef struct {
     char base_topic[128];
     char device_id[128];
     char device_name[128];
-    char timestamp_offset[8];
+    char timezone[64];
     char local_ip[64];
     int video_enabled;
     mqtt_callbacks_t callbacks;
@@ -390,11 +390,81 @@ static void publish_suffix(const char* suffix, const char* payload, int retain) 
     mqtt_publish_raw(topic, payload, retain);
 }
 
+static int last_sunday_of_month(int year, int month) {
+    struct tm tm_value;
+    int mday;
+
+    memset(&tm_value, 0, sizeof(tm_value));
+    tm_value.tm_year = year - 1900;
+    tm_value.tm_mon = month;
+    tm_value.tm_mday = 0;
+    mktime(&tm_value);
+    mday = tm_value.tm_mday;
+    return mday - tm_value.tm_wday;
+}
+
+static const char* timezone_offset_for_wall_time(const char* timezone,
+                                                 const struct tm* wall_tm) {
+    int year;
+    int month;
+    int day;
+    int hour;
+    int dst_start_day;
+    int dst_end_day;
+
+    if (!timezone || !timezone[0] ||
+        strcmp(timezone, "UTC") == 0 ||
+        strcmp(timezone, "Etc/UTC") == 0 ||
+        strcmp(timezone, "GMT") == 0 ||
+        strcmp(timezone, "Z") == 0 ||
+        strcmp(timezone, "z") == 0) {
+        return "+00:00";
+    }
+
+    if ((timezone[0] == '+' || timezone[0] == '-') &&
+        isdigit((unsigned char)timezone[1]) &&
+        isdigit((unsigned char)timezone[2]) &&
+        timezone[3] == ':' &&
+        isdigit((unsigned char)timezone[4]) &&
+        isdigit((unsigned char)timezone[5]) &&
+        timezone[6] == '\0') {
+        return timezone;
+    }
+
+    if (strcmp(timezone, "Europe/Madrid") != 0 &&
+        strcmp(timezone, "CET") != 0 &&
+        strcmp(timezone, "CEST") != 0) {
+        return "+00:00";
+    }
+
+    year = wall_tm->tm_year + 1900;
+    month = wall_tm->tm_mon + 1;
+    day = wall_tm->tm_mday;
+    hour = wall_tm->tm_hour;
+
+    if (month > 3 && month < 10) {
+        return "+02:00";
+    }
+    if (month < 3 || month > 10) {
+        return "+01:00";
+    }
+
+    dst_start_day = last_sunday_of_month(year, 3);
+    dst_end_day = last_sunday_of_month(year, 10);
+
+    if (month == 3) {
+        return (day > dst_start_day || (day == dst_start_day && hour >= 3)) ?
+               "+02:00" : "+01:00";
+    }
+
+    return (day < dst_end_day || (day == dst_end_day && hour < 3)) ?
+           "+02:00" : "+01:00";
+}
+
 static void iso_now(char* out, size_t out_size) {
     time_t now = time(NULL);
     struct tm tm_value;
-    const char *offset = mqtt_state.timestamp_offset[0] ?
-                         mqtt_state.timestamp_offset : "+00:00";
+    const char *offset;
     char wall_time[32];
 
     /*
@@ -403,20 +473,9 @@ static void iso_now(char* out, size_t out_size) {
      * offset so Home Assistant can convert it correctly.
      */
     gmtime_r(&now, &tm_value);
+    offset = timezone_offset_for_wall_time(mqtt_state.timezone, &tm_value);
     strftime(wall_time, sizeof(wall_time), "%Y-%m-%dT%H:%M:%S", &tm_value);
-    if (strcmp(offset, "Z") == 0 || strcmp(offset, "z") == 0) {
-        snprintf(out, out_size, "%sZ", wall_time);
-    } else if ((offset[0] == '+' || offset[0] == '-') &&
-               isdigit((unsigned char)offset[1]) &&
-               isdigit((unsigned char)offset[2]) &&
-               offset[3] == ':' &&
-               isdigit((unsigned char)offset[4]) &&
-               isdigit((unsigned char)offset[5]) &&
-               offset[6] == '\0') {
-        snprintf(out, out_size, "%s%s", wall_time, offset);
-    } else {
-        snprintf(out, out_size, "%s+00:00", wall_time);
-    }
+    snprintf(out, out_size, "%s%s", wall_time, offset);
 }
 
 static void unique_id(char* out, size_t out_size, const char* suffix) {
@@ -852,7 +911,7 @@ int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
     strncpy(mqtt_state.user, app_config->mqtt_user, sizeof(mqtt_state.user) - 1);
     strncpy(mqtt_state.pass, app_config->mqtt_pass, sizeof(mqtt_state.pass) - 1);
     strncpy(mqtt_state.ha_prefix, app_config->mqtt_homeassistant_prefix, sizeof(mqtt_state.ha_prefix) - 1);
-    strncpy(mqtt_state.timestamp_offset, app_config->mqtt_timestamp_offset, sizeof(mqtt_state.timestamp_offset) - 1);
+    strncpy(mqtt_state.timezone, app_config->mqtt_timezone, sizeof(mqtt_state.timezone) - 1);
     strncpy(mqtt_state.local_ip, local_ip ? local_ip : "0.0.0.0", sizeof(mqtt_state.local_ip) - 1);
     mqtt_state.video_enabled = app_config->video_enabled;
 
