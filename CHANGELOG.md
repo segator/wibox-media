@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/segator/wibox-media/compare/wibox-media-v0.4.3...wibox-media-v0.4.4) (2026-06-30)
+
+
+### Bug Fixes
+
+* **mqtt:** simplify lifecycle state and timestamps ([0aa1b99](https://github.com/segator/wibox-media/commit/0aa1b99cc770b8acae5f11ac7efd70fe6ef57dc9))
+
 ## [0.4.3](https://github.com/segator/wibox-media/compare/wibox-media-v0.4.2...wibox-media-v0.4.3) (2026-06-30)
 
 
