@@ -118,7 +118,7 @@ help:
 	@echo " 13. make flash-dry-run  Validate flash upload/checks without writing mtd4"
 	@echo " 14. make status    Show WiBox runtime status"
 	@echo ""
-	@echo "  Prerequisite: factory mtd4 backup at ./mtd4"
+	@echo "  Uses:          ./mtd4 and ./third_party/gk710x-sdk-min"
 	@echo "  Output:        release/image-YYMMDD-HHMM"
 	@echo ""
 	@echo "  make clean      Remove build artifacts"

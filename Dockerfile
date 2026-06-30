@@ -1,3 +1,5 @@
+ARG BASE_IMAGE=wibox-build:latest
+
 # Stage 1: Build cramfs tools on Ubuntu 16.04 (zlib 1.2.8)
 FROM ubuntu:16.04 AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -7,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Stage 2: Production build image: ARM toolchain, PJProject and cramfs tools.
-FROM wibox-build:latest
+FROM ${BASE_IMAGE}
 COPY --from=builder /tmp/ct/mkcramfs /tmp/ct/cramfsck /usr/local/bin/
 ENV PATH="/opt/4.6.1/usr/bin:${PATH}"
 RUN chmod +x /usr/local/bin/mkcramfs /usr/local/bin/cramfsck \

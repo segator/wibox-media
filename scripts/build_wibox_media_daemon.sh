@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-SDK_DIR="${SDK_DIR:-$HOME/config/GK710X_LinuxSDK_v2.0.0}"
+SDK_DIR="${SDK_DIR:-$(pwd)/third_party/gk710x-sdk-min}"
 BUILD_IMAGE="${BUILD_IMAGE:-wibox-build-tool:latest}"
 
 docker run --rm \

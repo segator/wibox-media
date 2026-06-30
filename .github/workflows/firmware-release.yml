@@ -1,0 +1,103 @@
+name: Firmware Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach assets to, for example v0.2.0"
+        required: false
+        type: string
+      upload_to_release:
+        description: "Upload image to the GitHub Release when policy allows it"
+        required: true
+        default: true
+        type: boolean
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  firmware:
+    name: Build firmware image
+    runs-on: ubuntu-24.04
+    env:
+      WIBOX_BUILD_IMAGE: ${{ vars.WIBOX_BUILD_IMAGE || 'ghcr.io/segator/wibox-build:latest' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ca-certificates
+
+      - name: Log in to GHCR
+        env:
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+        run: |
+          if [ -n "${GHCR_READ_TOKEN}" ]; then
+            echo "${GHCR_READ_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          fi
+
+      - name: Build project Docker image
+        run: |
+          docker build \
+            --build-arg BASE_IMAGE="${WIBOX_BUILD_IMAGE}" \
+            -t wibox-build-tool:latest .
+
+      - name: Build and verify firmware
+        run: |
+          make test
+          make build
+          make verify-image
+
+      - name: Package firmware artifact
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="${{ inputs.tag }}"
+          fi
+          if [ -z "${tag}" ]; then
+            tag="manual-${GITHUB_RUN_NUMBER}"
+          fi
+          safe_tag=$(printf "%s" "${tag}" | tr -c 'A-Za-z0-9._-' '-')
+          image="wibox-media-${safe_tag}.img"
+          cp -L release/latest "${image}"
+          sha256sum "${image}" > SHA256SUMS
+          md5sum "${image}" > MD5SUMS
+          {
+            echo "tag=${tag}"
+            echo "safe_tag=${safe_tag}"
+            echo "image=${image}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-image-${{ steps.package.outputs.safe_tag }}
+          path: |
+            ${{ steps.package.outputs.image }}
+            SHA256SUMS
+            MD5SUMS
+          if-no-files-found: error
+
+      - name: Upload image to GitHub Release
+        if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release) }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.package.outputs.tag }}
+          files: |
+            ${{ steps.package.outputs.image }}
+            SHA256SUMS
+            MD5SUMS

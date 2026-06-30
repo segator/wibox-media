@@ -1,4 +1,3 @@
-mtd4
 cramfs/
 release/
 other/
@@ -41,7 +40,6 @@ cramfsck
 mkcramfs
 cramfs/
 release/
-mtd4
 mkcramfs
 cramfsck
 mtd4.bak

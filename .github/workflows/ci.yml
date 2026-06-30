@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-tests:
+    name: Host tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential python3
+
+      - name: Host MQTT regression
+        run: make test
+
+  docker-build-tool:
+    name: Build project Docker image
+    runs-on: ubuntu-24.04
+    if: ${{ vars.WIBOX_BUILD_IMAGE != '' }}
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        env:
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+        run: |
+          if [ -n "${GHCR_READ_TOKEN}" ]; then
+            echo "${GHCR_READ_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          fi
+
+      - name: Build wibox-build-tool
+        run: |
+          docker build \
+            --build-arg BASE_IMAGE="${{ vars.WIBOX_BUILD_IMAGE }}" \
+            -t wibox-build-tool:ci .

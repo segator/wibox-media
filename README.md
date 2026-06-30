@@ -50,12 +50,6 @@ On your computer:
 - Linux shell.
 - Docker.
 - This repository.
-- A factory `mtd4` backup saved as `./mtd4`.
-- Goke SDK at:
-
-```text
-$HOME/config/GK710X_LinuxSDK_v2.0.0
-```
 
 On the stock WiBox:
 
@@ -69,6 +63,22 @@ Safety notes:
 - Serial recovery is recommended before first flash, but it is not required for
   B007/B010 if telnet works. It becomes required if the device cannot be
   reached over the network after flashing.
+
+## Prebuilt Images
+
+For normal installation, use the latest GitHub Release image when one is
+available. Download:
+
+```text
+wibox-media-<version>.img
+```
+
+Then use that file wherever this guide says `release/latest`.
+
+Building locally is only needed if you want to develop the firmware or verify a
+change before release. The factory `mtd4` backup and the minimal Goke SDK files
+used by the build are included in this repository so GitHub Actions can generate
+release images.
 
 ## Fresh Device Journey
 
@@ -187,11 +197,10 @@ for i in $(seq 0 6); do
 done
 ```
 
-Copy the `mtd4` backup into the repository root on your computer:
-
-```bash
-cp mtd4 /path/to/wibox-media/mtd4
-```
+Keep the backup somewhere safe. The repository already includes the `mtd4`
+base image used for release builds, so you do not need to copy your backup into
+the checkout unless you intentionally want to build from your own factory
+partition.
 
 After the custom firmware is running, future backups can use:
 
@@ -223,7 +232,13 @@ network={
 
 The generated firmware uses this file to bring WiFi back after boot.
 
-### 5. Build The Firmware On Your Computer
+### 5. Get Or Build The Firmware Image
+
+If you downloaded a prebuilt release image, skip the build commands below and
+use that image for the flash step.
+
+To build locally, use the repository checkout as-is. The build uses `./mtd4` and
+`./third_party/gk710x-sdk-min`.
 
 Build the project Docker image:
 
@@ -470,6 +485,30 @@ blue   application boot finished
 Runtime call-state LEDs are intentionally not implemented yet. If added later,
 they should live in the daemon with an explicit priority model and physical
 verification.
+
+## CI And Releases
+
+GitHub Actions is intentionally small:
+
+- `CI` runs the host MQTT regression test on pushes and pull requests.
+- `Release Please` manages changelog and GitHub release PRs.
+- `Firmware Image` builds the final cramfs image for a published release or a
+  manual workflow run.
+
+The firmware image workflow builds from the committed `mtd4` backup and
+`third_party/gk710x-sdk-min`.
+
+Optional secret:
+
+```text
+GHCR_READ_TOKEN
+```
+
+Optional repository variables:
+
+```text
+WIBOX_BUILD_IMAGE              base Docker image, defaults to ghcr.io/segator/wibox-build:latest
+```
 
 ## Recovery
 

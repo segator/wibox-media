@@ -1,0 +1,9 @@
+mtd4
+third_party/
+cramfs/
+release/
+backups/
+.git/
+*.img
+*.pcap
+__pycache__/
