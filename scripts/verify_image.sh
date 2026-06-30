@@ -72,6 +72,14 @@ if ! grep -q "^video_enabled=1" "${ROOT}/etc/sip_media.conf.default"; then
   echo "[!] default config does not enable video by default" >&2
   exit 9
 fi
+if ! grep -q "^prometheus_enabled=1" "${ROOT}/etc/sip_media.conf.default"; then
+  echo "[!] default config does not enable Prometheus by default" >&2
+  exit 9
+fi
+if ! grep -q "^prometheus_port=9617" "${ROOT}/etc/sip_media.conf.default"; then
+  echo "[!] default config does not set Prometheus port 9617" >&2
+  exit 9
+fi
 for key in WIBOX_VERSION WIBOX_COMMIT WIBOX_BUILD_TIMESTAMP; do
   if ! grep -q "^${key}=." "${ROOT}/etc/wibox-release"; then
     echo "[!] ${ROOT}/etc/wibox-release missing ${key}" >&2

@@ -24,6 +24,7 @@ mkdir -p include/bin
 cp src/sip_media/wibox-media-daemon include/bin/
 
 mkdir -p include/etc
+cp src/sip_media/sip_media.conf.default include/etc/
 cat > include/etc/wibox-release <<EOF
 WIBOX_VERSION=$WIBOX_VERSION
 WIBOX_COMMIT=$WIBOX_COMMIT
