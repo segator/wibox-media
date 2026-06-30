@@ -1058,6 +1058,9 @@ static void handle_uart_frame(const unsigned char frame[4]) {
         mqtt_publish_call_active(1);
         break;
     case UART_CODE_PUSH_STATE_0:
+        report_alarm_event(1);
+        handle_ding_trigger("serial push state");
+        break;
     case UART_CODE_PUSH_STATE_1:
     case UART_CODE_MCU_STATE_0:
     case UART_CODE_MCU_STATE_1:

@@ -29,7 +29,7 @@ Given code `FB 20 00`, CRC last value = `B + 20 + 00` = `0x2B`.
 | `FB 17 01 23` | out | CallF1Func | Turn on relay F1 button. |
 | `FB 18 04 27` | in | SAVE_ADDR 0x04 | Appears after configuring with button P2 and pressing the intercom button. |
 | `FB 18 5E 81` | in | SAVE_ADDR 0x5e | Unknown. Appears after init. |
-| `FB 19 00 24` | in/out | PUSH_STATE 0x00 | Wifi/calls are disabled. Can be set. |
+| `FB 19 00 24` | in/out | PUSH_STATE 0x00 | Observed on some firmware when the physical call-forward path is active; the daemon treats it as a doorbell trigger. Can also be set as a state flag. |
 | `FB 19 01 25` | in/out | PUSH_STATE 0x01 | Wifi/calls are enabled. Can be set. |
 | `FB 20 00 2B` | in | CMD_RESET | After clicking button P1 (wifi) 5 times. Triggers Sofia to delete wifi and reboot. |
 | `FB 21 00 2C` | in | STA_TO_AP | After pressing for +5s the button, triggers Sofia to reboot and start in AP mode. |
