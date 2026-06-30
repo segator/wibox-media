@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/segator/wibox-media/compare/wibox-media-v0.3.0...wibox-media-v0.3.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* wait for WiFi IP before SIP startup ([4be7cf7](https://github.com/segator/wibox-media/commit/4be7cf7f98c855557918cda9bc9a5f12a80fd8ac))
+
 ## [0.3.0](https://github.com/segator/wibox-media/compare/wibox-media-v0.2.0...wibox-media-v0.3.0) (2026-06-30)
 
 
