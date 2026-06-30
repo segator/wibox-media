@@ -47,11 +47,12 @@ To persist the image to `/usr` (`mtd4`), use the guarded flash target:
 
 ```bash
 make flash-dry-run
+make backup-mtd4
 make flash CONFIRM_FLASH=YES
 ```
 
 `flash-dry-run` verifies or uploads `/tmp/update.img` and stops before writing
-mtd4.
+mtd4. `flash` runs `backup-mtd4` automatically before writing.
 
 ## Keep application working
 

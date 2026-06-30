@@ -74,10 +74,12 @@ make deploy-runtime WIBOX_IP=192.168.0.196 WIBOX_USER=root WIBOX_PASS=qv2008
 
 Use the guarded Make target. It verifies or uploads `release/latest` as
 `/tmp/update.img`, checks the local and remote hashes, confirms `mtd4` is the
-`/usr` partition, then runs `/usr/bin/update_firmware.sh` on the device.
+`/usr` partition, backs up the current `mtd4` image to `backups/`, then runs
+`/usr/bin/update_firmware.sh` on the device.
 
 ```bash
 make flash-dry-run
+make backup-mtd4
 make flash CONFIRM_FLASH=YES
 reboot
 ```
@@ -86,6 +88,10 @@ reboot
 when `/tmp/update.img` already matches `release/latest`, then stops before
 writing mtd4. Do not use raw `dd` for normal updates; the updater verifies the
 written image.
+
+`make flash CONFIRM_FLASH=YES` runs `backup-mtd4` automatically before writing
+the new image. `backup-mtd4` verifies the local backup size and MD5 against the
+device.
 
 ### Recovery flash (U-Boot via serial YMODEM)
 

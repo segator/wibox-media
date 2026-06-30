@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: docker docker-shell build build-inside build-media test verify verify-image verify-mqtt verify-runtime verify-device deploy-runtime flash flash-dry-run status extract patch pack clean help
+.PHONY: docker docker-shell build build-inside build-media test verify verify-image verify-mqtt verify-runtime verify-device deploy-runtime backup-mtd4 flash flash-dry-run status extract patch pack clean help
 
 BUILD_DIR = cramfs
 FILE = mtd4
@@ -51,7 +51,11 @@ deploy-runtime: build-media
 		scripts/deploy_runtime.sh
 	@$(MAKE) verify-device
 
-flash: build
+backup-mtd4:
+	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
+		scripts/backup_mtd4.sh
+
+flash: build backup-mtd4
 	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
 		CONFIRM_FLASH=$(CONFIRM_FLASH) scripts/flash_firmware.sh release/latest
 
@@ -109,9 +113,10 @@ help:
 	@echo "  8. make verify-runtime  Verify active WiBox daemon matches local binary"
 	@echo "  9. make verify-device  Verify runtime and MQTT using WiBox config"
 	@echo " 10. make deploy-runtime  Upload current daemon to /tmp and restart it"
-	@echo " 11. make flash CONFIRM_FLASH=YES  Flash release/latest to mtd4"
-	@echo " 12. make flash-dry-run  Validate flash upload/checks without writing mtd4"
-	@echo " 13. make status    Show WiBox runtime status"
+	@echo " 11. make backup-mtd4  Save and verify current WiBox /usr partition"
+	@echo " 12. make flash CONFIRM_FLASH=YES  Backup then flash release/latest to mtd4"
+	@echo " 13. make flash-dry-run  Validate flash upload/checks without writing mtd4"
+	@echo " 14. make status    Show WiBox runtime status"
 	@echo ""
 	@echo "  Prerequisite: factory mtd4 backup at ./mtd4"
 	@echo "  Output:        release/image-YYMMDD-HHMM"

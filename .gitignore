@@ -2,6 +2,7 @@ mtd4
 cramfs/
 release/
 other/
+backups/
 /tmp
 patch.log
 
