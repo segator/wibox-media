@@ -5,7 +5,8 @@
       "package-name": "wibox-media",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        "README.md"
+        "README.md",
+        "docs/getting_started.md"
       ]
     }
   }

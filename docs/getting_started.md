@@ -64,7 +64,7 @@ network={
 The easiest path is the latest GitHub Release image:
 
 ```bash
-VERSION="v0.4.6"
+VERSION="v0.4.6"  # x-release-please-version
 wget -O wibox-media.img "https://github.com/aymerici/wibox-media/releases/download/${VERSION}/wibox-media-${VERSION}.img"
 ```
 
