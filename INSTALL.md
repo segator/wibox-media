@@ -1,122 +1,161 @@
-# Install WiBox Media Firmware
+# Installation Guide
 
-This project replaces the WiBox `/usr` cramfs partition (`mtd4`) with a custom
-image that boots `wibox-media-daemon`.
+Read [`README.md`](README.md) first. It explains the project purpose, supported
+firmware versions, build flow and normal flashing path.
 
-Serial recovery access is strongly recommended before flashing.
+This file is the focused installation and recovery checklist.
 
-## Prepare
+## 1. Confirm Device Access
 
-Required local files and tools:
-
-```text
-./mtd4                                      factory /usr cramfs backup
-$HOME/config/GK710X_LinuxSDK_v2.0.0         Goke SDK
-Docker
-```
-
-Build the project Docker image:
-
-```bash
-make docker
-```
-
-Build and verify the firmware image:
-
-```bash
-make build
-make verify
-```
-
-The final image is:
+Supported WiBox firmware for network-based installation:
 
 ```text
-release/latest
+V500.R001.A103.00.G0021.B010 or older
 ```
 
-## Configure WiFi
+For newer firmware, prepare serial and use the recovery/U-Boot path.
 
-The firmware expects WiFi configuration in the persistent partition. Create or
-update `/mnt/mtd/wpa_supplicant.conf` on the device:
+Default shell credentials when available:
+
+```text
+root / qv2008
+```
+
+Some Sofia console sessions use:
+
+```text
+root / aszeno
+```
+
+## 2. Prepare Serial Recovery
+
+Unplug the WiBox before opening the case or attaching serial wires. Do not
+solder while the board is powered.
+
+Serial: `115200`, no hardware flow control.
+
+| WiBox board | USB TTL adapter |
+|-------------|-----------------|
+| GND         | GND             |
+| TX          | RX              |
+| RX          | TX              |
+
+![Serial connector](docs/img/serial.jpg)
+
+If no boot messages appear, set the console in U-Boot:
+
+```sh
+setenv consoledev 'ttySGK0'
+saveenv
+reset
+```
+
+## 3. Back Up Flash
+
+The build needs the factory `/usr` partition:
+
+```text
+./mtd4
+```
+
+If SSH works:
+
+```bash
+make backup-mtd4
+cp backups/mtd4-*.img ./mtd4
+```
+
+Manual full backup:
+
+On your computer:
+
+```bash
+for i in $(seq 0 6); do
+  nc -l -p 8888 > "mtd${i}"
+done
+```
+
+On the WiBox:
+
+```sh
+PC_IP=192.168.1.100
+for i in $(seq 0 6); do
+  dd if=/dev/mtd${i} bs=4096 | nc "${PC_IP}" 8888
+  sleep 1
+done
+```
+
+## 4. Configure Persistent WiFi
+
+Create `/mnt/mtd/wpa_supplicant.conf`:
 
 ```ini
 ctrl_interface=/var/run/wpa_supplicant
 ap_scan=1
 
 network={
-        ssid="CHANGE_WIFI_NAME"
-        psk="CHANGE_WIFI_PASSWORD"
+        ssid="YOUR_WIFI_NAME"
+        psk="YOUR_WIFI_PASSWORD"
         scan_ssid=1
         key_mgmt=WPA-PSK
 }
 ```
 
-## Configure Media/MQTT
+## 5. Build
 
-Runtime config lives on the device:
+```bash
+make docker
+make build
+make verify
+```
+
+Final image:
 
 ```text
-/mnt/mtd/sip_media.conf
+release/latest
 ```
 
-If it does not exist, the first boot copies `/etc/sip_media.conf.default`.
-
-Example MQTT settings:
-
-```ini
-mqtt_enabled=1
-mqtt_host=192.168.10.2
-mqtt_user=mqtt
-mqtt_pass=password
-```
-
-Do not commit real credentials to the repository.
-
-## Test Without Flashing
-
-Upload the current daemon to `/tmp` and restart it:
+## 6. Test Without Flashing
 
 ```bash
 make deploy-runtime
 make verify-device
 ```
 
-## Flash Over SSH
-
-Run the non-destructive dry run first:
+## 7. Flash Over SSH
 
 ```bash
 make flash-dry-run
-```
-
-Create a verified backup of current `/usr`:
-
-```bash
 make backup-mtd4
-```
-
-Flash:
-
-```bash
 make flash CONFIRM_FLASH=YES
 reboot
 ```
 
-`make flash` runs `backup-mtd4` automatically. Backups are written to
-`backups/` and ignored by git.
+`make flash` runs `backup-mtd4` automatically, but running it explicitly first
+makes the backup path visible before writing.
 
-## Serial Recovery
+## 8. Recovery Via Shell
 
-The serial console is `ttySGK2` at `115200`, no hardware flow control.
+Use this when Linux boots and serial shell works.
 
-| Board | TTL |
-|-------|-----|
-| GND   | GND |
-| TX    | RX  |
-| RX    | TX  |
+Transfer `release/latest` to `/tmp/update.img` using your terminal file
+transfer support, then run:
 
-If U-Boot is available, load `release/latest` via YMODEM and write it to the
-`mtd4` offset:
+```sh
+/usr/bin/update_firmware.sh
+reboot
+```
+
+If the updater is unavailable, manual write is the last resort:
+
+```sh
+dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
+sync
+```
+
+## 9. Recovery Via U-Boot
+
+Use this when Linux does not boot far enough for a shell.
 
 ```sh
 mw.b 0xC1000000 ff 00b10000
@@ -126,3 +165,5 @@ sf erase 0x00460000 00b10000
 sf write 0xC1000000 0x00460000 00b10000
 reset
 ```
+
+Send `release/latest` via YMODEM when `loady` waits for the file.

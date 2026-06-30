@@ -1,6 +1,6 @@
-# WiBox Media Usage
+# Usage Cheatsheet
 
-## Build Image
+## Build
 
 ```bash
 make docker
@@ -8,33 +8,32 @@ make build
 make verify
 ```
 
-The final image is `release/latest`. Both daemon compilation and cramfs packing
-run inside `wibox-build-tool:latest`.
+Final image:
 
-## Configure Device
+```text
+release/latest
+```
 
-Persistent runtime config:
+## Device Config
+
+Persistent config:
 
 ```text
 /mnt/mtd/sip_media.conf
 ```
 
-Minimal MQTT/Home Assistant example:
+Minimal SIP/MQTT example:
 
 ```ini
+outgoing_call_target=sip:1000@192.168.0.31:5060
 mqtt_enabled=1
 mqtt_host=192.168.10.2
 mqtt_user=mqtt
 mqtt_pass=password
-```
-
-Video is enabled by default:
-
-```ini
 video_enabled=1
 ```
 
-Set it to `0` for installations without video intercom support.
+Set `video_enabled=0` for audio-only installations.
 
 ## Runtime Test Without Flashing
 
@@ -42,20 +41,6 @@ Set it to `0` for installations without video intercom support.
 make deploy-runtime
 make verify-device
 ```
-
-This uploads `wibox-media-daemon` to `/tmp`, restarts it, verifies its checksum
-and checks MQTT discovery/state.
-
-## Local Boot Hook
-
-For site-specific startup extras, create an executable file on the device:
-
-```bash
-/mnt/mtd/post.sh
-```
-
-`run.sh` executes it after starting `wibox-media-daemon`. Do not use this hook
-to start Sofia or a second media runtime.
 
 ## Flash
 
@@ -66,12 +51,26 @@ make flash CONFIRM_FLASH=YES
 reboot
 ```
 
-`flash` runs `backup-mtd4` automatically before writing. Backups are stored in
-`backups/` and are intentionally ignored by git.
+## Local Boot Hook
+
+Optional executable hook:
+
+```text
+/mnt/mtd/post.sh
+```
+
+It runs after `wibox-media-daemon` starts. Do not start Sofia or another media
+runtime from it.
 
 ## Local Test API
 
-The daemon creates `/tmp/pipe_sip`:
+The daemon creates:
+
+```text
+/tmp/pipe_sip
+```
+
+Examples:
 
 ```bash
 echo DING > /tmp/pipe_sip
@@ -80,5 +79,5 @@ echo 'AUDIO_TEST 192.168.0.183 4012 5' > /tmp/pipe_sip
 echo 'VIDEO_TEST 192.168.0.183 4014 5' > /tmp/pipe_sip
 ```
 
-`UART ...` injects an intercom frame, which is useful when the physical portal
-button is not reachable.
+`UART ...` injects an intercom frame, useful when the physical portal button is
+not reachable.
