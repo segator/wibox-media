@@ -501,7 +501,8 @@ The firmware image workflow builds from the committed `mtd4` backup and
 Optional secret:
 
 ```text
-GHCR_READ_TOKEN
+GHCR_READ_TOKEN        token that can read ghcr.io/segator/wibox-build:latest
+RELEASE_PLEASE_TOKEN   PAT used by Release Please so release events trigger firmware builds
 ```
 
 Optional repository variables:
