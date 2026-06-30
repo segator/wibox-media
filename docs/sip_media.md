@@ -135,6 +135,9 @@ bounded local test, and then stops audio and the panel context.
 - Real MQTT broker/Home Assistant verification passed:
   - retained discovery topics exist for 10 WiBox entities;
   - retained state topics show the WiBox online and idle;
+  - call/SIP/video active sensors use plain ON/OFF semantics, not
+    connectivity/disconnected wording;
+  - WiFi RSSI is retained from `/usr/sbin/wpa_cli`;
   - `video/enabled/set OFF/ON` commands are consumed by the daemon.
 
 ## Still To Verify

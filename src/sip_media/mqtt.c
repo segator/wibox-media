@@ -416,17 +416,22 @@ static void publish_binary_sensor_config(const char* object_id, const char* name
     char uid[192];
     char dev[512];
     char payload[1536];
+    char class_part[128] = "";
 
     discovery_topic(topic, sizeof(topic), "binary_sensor", object_id);
     topic_path(state_topic, sizeof(state_topic), state_suffix);
     unique_id(uid, sizeof(uid), object_id);
     device_json(dev, sizeof(dev));
 
+    if (device_class && device_class[0]) {
+        snprintf(class_part, sizeof(class_part), "\"device_class\":\"%s\",", device_class);
+    }
+
     snprintf(payload, sizeof(payload),
              "{\"name\":\"%s\",\"unique_id\":\"%s\",\"state_topic\":\"%s\","
              "\"availability_topic\":\"%s\",\"payload_on\":\"ON\","
-             "\"payload_off\":\"OFF\",\"device_class\":\"%s\",%s}",
-             name, uid, state_topic, mqtt_state.base_topic, device_class, dev);
+             "\"payload_off\":\"OFF\",%s%s}",
+             name, uid, state_topic, mqtt_state.base_topic, class_part, dev);
     mqtt_publish_raw(topic, payload, 1);
 }
 
@@ -508,9 +513,9 @@ void mqtt_publish_discovery(void) {
 
     publish_button_config();
     publish_binary_sensor_config("ringing", "Ringing", "ringing", "occupancy");
-    publish_binary_sensor_config("call_active", "Call Active", "call/active", "connectivity");
-    publish_binary_sensor_config("sip_call_active", "SIP Call Active", "sip/active", "connectivity");
-    publish_binary_sensor_config("video_active", "Video Active", "video/active", "connectivity");
+    publish_binary_sensor_config("call_active", "Call Active", "call/active", "");
+    publish_binary_sensor_config("sip_call_active", "SIP Call Active", "sip/active", "");
+    publish_binary_sensor_config("video_active", "Video Active", "video/active", "");
     publish_sensor_config("media_state", "Media State", "media/state", "", "phone");
     publish_sensor_config("last_ring", "Last Ring", "ringing/last", "timestamp", "history");
     publish_sensor_config("last_unlock", "Last Unlock", "door/last_unlock", "timestamp", "lock-open");
@@ -567,10 +572,12 @@ void mqtt_publish_last_unlock(void) {
 void mqtt_publish_wifi_stats(void) {
     FILE* fp;
     char line[128];
-    char cmd[512];
     char rssi[32] = "";
 
-    fp = popen("wpa_cli -i wlan0 signal_poll 2>/dev/null", "r");
+    fp = popen("/usr/sbin/wpa_cli -i wlan0 signal_poll 2>/dev/null", "r");
+    if (!fp) {
+        fp = popen("wpa_cli -i wlan0 signal_poll 2>/dev/null", "r");
+    }
     if (!fp) {
         return;
     }
@@ -586,8 +593,6 @@ void mqtt_publish_wifi_stats(void) {
     if (rssi[0]) {
         publish_suffix("wifi/rssi", rssi, 1);
     }
-
-    (void)cmd;
 }
 
 static int payload_is_on(const char* payload) {
@@ -755,6 +760,7 @@ static void* mqtt_thread_func(void* arg) {
         mqtt_publish_video_active(0);
         mqtt_publish_media_state("idle");
         mqtt_publish_video_enabled(mqtt_state.video_enabled);
+        mqtt_publish_wifi_stats();
 
         while (mqtt_state.running) {
             time_t now = time(NULL);
