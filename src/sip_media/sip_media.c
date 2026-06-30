@@ -652,6 +652,7 @@ static void unlock_door(const char* source) {
     }
 }
 
+
 static void mqtt_open_door_callback(void* user_data) {
     (void)user_data;
 
@@ -746,7 +747,6 @@ static void handle_ding_trigger(const char* source) {
     }
 
     mqtt_publish_ringing(1);
-    mqtt_publish_last_ring();
     mqtt_publish_media_state("ringing");
     prometheus_set_ringing(1);
     prometheus_inc_ring();

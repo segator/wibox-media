@@ -184,6 +184,12 @@ def assert_command_config(seen, component, object_id, expected_command_topic,
     return config
 
 
+def assert_absent(seen, topic):
+    payload = seen.get(topic)
+    if payload not in (None, ""):
+        raise AssertionError(f"expected {topic} to be cleared, got {payload!r}")
+
+
 def main():
     topics = [
         MQTT_BASE_TOPIC,
@@ -193,19 +199,21 @@ def main():
         f"{MQTT_BASE_TOPIC}/firmware/build_timestamp",
         f"{MQTT_BASE_TOPIC}/wifi/rssi",
         f"{MQTT_BASE_TOPIC}/video/enabled",
-        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_ringing/config",
-        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_call_active/config",
-        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_sip_call_active/config",
-        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_video_active/config",
         f"{MQTT_HA_PREFIX}/button/{HA_ID}_open_door/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_media_state/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_version/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_commit/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_build_timestamp/config",
-        f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_last_ring/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_last_unlock/config",
         f"{MQTT_HA_PREFIX}/switch/{HA_ID}_video_enabled/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_wifi_rssi/config",
+        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_ringing/config",
+        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_call_active/config",
+        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_sip_call_active/config",
+        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_video_active/config",
+        f"{MQTT_BASE_TOPIC}/call/active",
+        f"{MQTT_BASE_TOPIC}/sip/active",
+        f"{MQTT_BASE_TOPIC}/video/active",
     ]
 
     print(f"[*] Connecting to MQTT broker {MQTT_HOST}:{MQTT_PORT}")
@@ -224,11 +232,6 @@ def main():
     wifi_rssi = assert_present(seen, f"{MQTT_BASE_TOPIC}/wifi/rssi")
     video_enabled = assert_present(seen, f"{MQTT_BASE_TOPIC}/video/enabled")
 
-    assert_config(seen, "binary_sensor", "ringing", f"{MQTT_BASE_TOPIC}/ringing",
-                  expected_device_class="occupancy")
-    assert_config(seen, "binary_sensor", "call_active", f"{MQTT_BASE_TOPIC}/call/active", no_device_class=True)
-    assert_config(seen, "binary_sensor", "sip_call_active", f"{MQTT_BASE_TOPIC}/sip/active", no_device_class=True)
-    assert_config(seen, "binary_sensor", "video_active", f"{MQTT_BASE_TOPIC}/video/active", no_device_class=True)
     assert_command_config(seen, "button", "open_door", f"{MQTT_BASE_TOPIC}/door/open/set",
                           expected_icon="mdi:door-open")
     assert_config(seen, "sensor", "media_state", f"{MQTT_BASE_TOPIC}/media/state",
@@ -239,14 +242,19 @@ def main():
                   no_device_class=True, expected_icon="mdi:source-commit")
     assert_config(seen, "sensor", "firmware_build_timestamp", f"{MQTT_BASE_TOPIC}/firmware/build_timestamp",
                   expected_device_class="timestamp", expected_icon="mdi:clock-outline")
-    assert_config(seen, "sensor", "last_ring", f"{MQTT_BASE_TOPIC}/ringing/last",
-                  expected_device_class="timestamp", expected_icon="mdi:history")
     assert_config(seen, "sensor", "last_unlock", f"{MQTT_BASE_TOPIC}/door/last_unlock",
                   expected_device_class="timestamp", expected_icon="mdi:lock-open")
     assert_config(seen, "switch", "video_enabled", f"{MQTT_BASE_TOPIC}/video/enabled",
                   expected_icon="mdi:video")
     assert_config(seen, "sensor", "wifi_rssi", f"{MQTT_BASE_TOPIC}/wifi/rssi",
                   expected_device_class="signal_strength", expected_icon="mdi:wifi")
+
+    assert_absent(seen, f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_call_active/config")
+    assert_absent(seen, f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_sip_call_active/config")
+    assert_absent(seen, f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_video_active/config")
+    assert_absent(seen, f"{MQTT_BASE_TOPIC}/call/active")
+    assert_absent(seen, f"{MQTT_BASE_TOPIC}/sip/active")
+    assert_absent(seen, f"{MQTT_BASE_TOPIC}/video/active")
 
     print(f"[*] MQTT discovery/state OK for {MQTT_BASE_TOPIC}")
     print(f"    media/state={media_state} firmware/version={firmware_version} "

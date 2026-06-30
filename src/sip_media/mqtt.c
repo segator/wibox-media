@@ -37,7 +37,6 @@ typedef struct {
     char base_topic[128];
     char device_id[128];
     char device_name[128];
-    char timezone[64];
     char local_ip[64];
     int video_enabled;
     mqtt_callbacks_t callbacks;
@@ -390,92 +389,65 @@ static void publish_suffix(const char* suffix, const char* payload, int retain) 
     mqtt_publish_raw(topic, payload, retain);
 }
 
-static int last_sunday_of_month(int year, int month) {
-    struct tm tm_value;
-    int mday;
-
-    memset(&tm_value, 0, sizeof(tm_value));
-    tm_value.tm_year = year - 1900;
-    tm_value.tm_mon = month;
-    tm_value.tm_mday = 0;
-    mktime(&tm_value);
-    mday = tm_value.tm_mday;
-    return mday - tm_value.tm_wday;
+static void clear_retained_topic(const char* topic) {
+    if (!mqtt_state.connected || !topic || !topic[0]) {
+        return;
+    }
+    mqtt_publish_raw(topic, "", 1);
 }
 
-static const char* timezone_offset_for_wall_time(const char* timezone,
-                                                 const struct tm* wall_tm) {
-    int year;
-    int month;
-    int day;
-    int hour;
-    int dst_start_day;
-    int dst_end_day;
+static void configure_system_timezone(const wibox_config_t* app_config) {
+    char tz[128] = "";
+    FILE* fp;
+    const char* tz_path;
+    size_t len;
 
-    if (!timezone || !timezone[0] ||
-        strcmp(timezone, "UTC") == 0 ||
-        strcmp(timezone, "Etc/UTC") == 0 ||
-        strcmp(timezone, "GMT") == 0 ||
-        strcmp(timezone, "Z") == 0 ||
-        strcmp(timezone, "z") == 0) {
-        return "+00:00";
+    tz_path = getenv("WIBOX_TZ_PATH");
+    if (!tz_path || !tz_path[0]) {
+        tz_path = "/mnt/mtd/TZ";
     }
 
-    if ((timezone[0] == '+' || timezone[0] == '-') &&
-        isdigit((unsigned char)timezone[1]) &&
-        isdigit((unsigned char)timezone[2]) &&
-        timezone[3] == ':' &&
-        isdigit((unsigned char)timezone[4]) &&
-        isdigit((unsigned char)timezone[5]) &&
-        timezone[6] == '\0') {
-        return timezone;
+    fp = fopen(tz_path, "r");
+    if (fp) {
+        if (fgets(tz, sizeof(tz), fp)) {
+            tz[strcspn(tz, "\r\n")] = '\0';
+        }
+        fclose(fp);
     }
 
-    if (strcmp(timezone, "Europe/Madrid") != 0 &&
-        strcmp(timezone, "CET") != 0 &&
-        strcmp(timezone, "CEST") != 0) {
-        return "+00:00";
+    if (!tz[0] && app_config && app_config->mqtt_timezone[0]) {
+        strncpy(tz, app_config->mqtt_timezone, sizeof(tz) - 1);
+        tz[sizeof(tz) - 1] = '\0';
     }
 
-    year = wall_tm->tm_year + 1900;
-    month = wall_tm->tm_mon + 1;
-    day = wall_tm->tm_mday;
-    hour = wall_tm->tm_hour;
-
-    if (month > 3 && month < 10) {
-        return "+02:00";
+    if (tz[0]) {
+        setenv("TZ", tz, 1);
+    } else {
+        unsetenv("TZ");
     }
-    if (month < 3 || month > 10) {
-        return "+01:00";
+    tzset();
+
+    len = strlen(tz);
+    if (len > 0) {
+        printf("%s: timezone set to %s\n", MQTT_FILE, tz);
     }
-
-    dst_start_day = last_sunday_of_month(year, 3);
-    dst_end_day = last_sunday_of_month(year, 10);
-
-    if (month == 3) {
-        return (day > dst_start_day || (day == dst_start_day && hour >= 3)) ?
-               "+02:00" : "+01:00";
-    }
-
-    return (day < dst_end_day || (day == dst_end_day && hour < 3)) ?
-           "+02:00" : "+01:00";
 }
 
 static void iso_now(char* out, size_t out_size) {
     time_t now = time(NULL);
     struct tm tm_value;
-    const char *offset;
     char wall_time[32];
+    char offset[8];
 
-    /*
-     * The GK7102S firmware stores wall-clock time without a reliable timezone.
-     * Treat time(NULL) as the displayed wall time and append the configured
-     * offset so Home Assistant can convert it correctly.
-     */
-    gmtime_r(&now, &tm_value);
-    offset = timezone_offset_for_wall_time(mqtt_state.timezone, &tm_value);
+    localtime_r(&now, &tm_value);
     strftime(wall_time, sizeof(wall_time), "%Y-%m-%dT%H:%M:%S", &tm_value);
-    snprintf(out, out_size, "%s%s", wall_time, offset);
+    strftime(offset, sizeof(offset), "%z", &tm_value);
+    if (strlen(offset) == 5) {
+        snprintf(out, out_size, "%s%c%c%c:%c%c",
+                 wall_time, offset[0], offset[1], offset[2], offset[3], offset[4]);
+    } else {
+        snprintf(out, out_size, "%s+00:00", wall_time);
+    }
 }
 
 static void unique_id(char* out, size_t out_size, const char* suffix) {
@@ -497,35 +469,6 @@ static void discovery_topic(char* out, size_t out_size,
     char uid[192];
     unique_id(uid, sizeof(uid), object_id);
     snprintf(out, out_size, "%s/%s/%s/config", mqtt_state.ha_prefix, component, uid);
-}
-
-static void publish_binary_sensor_config(const char* object_id, const char* name,
-                                         const char* state_suffix,
-                                         const char* device_class,
-                                         int enabled_by_default) {
-    char topic[256];
-    char state_topic[256];
-    char uid[192];
-    char dev[512];
-    char payload[1536];
-    char class_part[128] = "";
-
-    discovery_topic(topic, sizeof(topic), "binary_sensor", object_id);
-    topic_path(state_topic, sizeof(state_topic), state_suffix);
-    unique_id(uid, sizeof(uid), object_id);
-    device_json(dev, sizeof(dev));
-
-    if (device_class && device_class[0]) {
-        snprintf(class_part, sizeof(class_part), "\"device_class\":\"%s\",", device_class);
-    }
-
-    snprintf(payload, sizeof(payload),
-             "{\"name\":\"%s\",\"unique_id\":\"%s\",\"state_topic\":\"%s\","
-             "\"availability_topic\":\"%s\",\"payload_on\":\"ON\","
-             "\"payload_off\":\"OFF\",\"enabled_by_default\":%s,%s%s}",
-             name, uid, state_topic, mqtt_state.base_topic,
-             enabled_by_default ? "true" : "false", class_part, dev);
-    mqtt_publish_raw(topic, payload, 1);
 }
 
 static void publish_sensor_config(const char* object_id, const char* name,
@@ -601,20 +544,36 @@ static void publish_video_switch_config(void) {
     mqtt_publish_raw(topic, payload, 1);
 }
 
+static void clear_legacy_entities(void) {
+    char topic[256];
+
+    discovery_topic(topic, sizeof(topic), "binary_sensor", "ringing");
+    clear_retained_topic(topic);
+    discovery_topic(topic, sizeof(topic), "binary_sensor", "call_active");
+    clear_retained_topic(topic);
+    discovery_topic(topic, sizeof(topic), "binary_sensor", "sip_call_active");
+    clear_retained_topic(topic);
+    discovery_topic(topic, sizeof(topic), "binary_sensor", "video_active");
+    clear_retained_topic(topic);
+
+    topic_path(topic, sizeof(topic), "call/active");
+    clear_retained_topic(topic);
+    topic_path(topic, sizeof(topic), "sip/active");
+    clear_retained_topic(topic);
+    topic_path(topic, sizeof(topic), "video/active");
+    clear_retained_topic(topic);
+}
+
 void mqtt_publish_discovery(void) {
     if (!mqtt_state.enabled || !mqtt_state.connected) return;
 
+    clear_legacy_entities();
     publish_button_config();
-    publish_binary_sensor_config("ringing", "Ringing", "ringing", "occupancy", 1);
-    publish_binary_sensor_config("call_active", "Call Active", "call/active", "", 1);
-    publish_binary_sensor_config("sip_call_active", "SIP Call Active", "sip/active", "", 0);
-    publish_binary_sensor_config("video_active", "Video Active", "video/active", "", 1);
     publish_sensor_config("media_state", "Media State", "media/state", "", "phone");
     publish_sensor_config("firmware_version", "Firmware Version", "firmware/version", "", "tag");
     publish_sensor_config("firmware_commit", "Firmware Commit", "firmware/commit", "", "source-commit");
     publish_sensor_config("firmware_build_timestamp", "Firmware Build Timestamp",
                           "firmware/build_timestamp", "timestamp", "clock-outline");
-    publish_sensor_config("last_ring", "Last Ring", "ringing/last", "timestamp", "history");
     publish_sensor_config("last_unlock", "Last Unlock", "door/last_unlock", "timestamp", "lock-open");
     publish_sensor_config("wifi_rssi", "WiFi RSSI", "wifi/rssi", "signal_strength", "wifi");
     publish_video_switch_config();
@@ -631,19 +590,19 @@ void mqtt_publish_offline(void) {
 }
 
 void mqtt_publish_ringing(int active) {
-    publish_suffix("ringing", active ? "ON" : "OFF", 1);
+    (void)active;
 }
 
 void mqtt_publish_call_active(int active) {
-    publish_suffix("call/active", active ? "ON" : "OFF", 1);
+    (void)active;
 }
 
 void mqtt_publish_sip_call_active(int active) {
-    publish_suffix("sip/active", active ? "ON" : "OFF", 1);
+    (void)active;
 }
 
 void mqtt_publish_video_active(int active) {
-    publish_suffix("video/active", active ? "ON" : "OFF", 1);
+    (void)active;
 }
 
 void mqtt_publish_video_enabled(int enabled) {
@@ -658,12 +617,6 @@ void mqtt_publish_firmware_version(void) {
     publish_suffix("firmware/version", WIBOX_VERSION, 1);
     publish_suffix("firmware/commit", WIBOX_COMMIT, 1);
     publish_suffix("firmware/build_timestamp", WIBOX_BUILD_TIMESTAMP, 1);
-}
-
-void mqtt_publish_last_ring(void) {
-    char value[64];
-    iso_now(value, sizeof(value));
-    publish_suffix("ringing/last", value, 1);
 }
 
 void mqtt_publish_last_unlock(void) {
@@ -857,10 +810,6 @@ static void* mqtt_thread_func(void* arg) {
 
         mqtt_publish_discovery();
         mqtt_publish_online();
-        mqtt_publish_ringing(0);
-        mqtt_publish_call_active(0);
-        mqtt_publish_sip_call_active(0);
-        mqtt_publish_video_active(0);
         mqtt_publish_media_state("idle");
         mqtt_publish_firmware_version();
         mqtt_publish_video_enabled(mqtt_state.video_enabled);
@@ -911,9 +860,9 @@ int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
     strncpy(mqtt_state.user, app_config->mqtt_user, sizeof(mqtt_state.user) - 1);
     strncpy(mqtt_state.pass, app_config->mqtt_pass, sizeof(mqtt_state.pass) - 1);
     strncpy(mqtt_state.ha_prefix, app_config->mqtt_homeassistant_prefix, sizeof(mqtt_state.ha_prefix) - 1);
-    strncpy(mqtt_state.timezone, app_config->mqtt_timezone, sizeof(mqtt_state.timezone) - 1);
     strncpy(mqtt_state.local_ip, local_ip ? local_ip : "0.0.0.0", sizeof(mqtt_state.local_ip) - 1);
     mqtt_state.video_enabled = app_config->video_enabled;
+    configure_system_timezone(app_config);
 
     get_hostname(hostname, sizeof(hostname));
     if (app_config->mqtt_device_id[0]) {

@@ -32,6 +32,7 @@ mqtt_homeassistant_prefix=homeassistant
 mqtt_base_topic=
 mqtt_device_id=
 mqtt_device_name=
+# Legacy fallback only. Prefer /mnt/mtd/TZ so run.sh exports the process TZ.
 mqtt_timezone=UTC
 
 # Prometheus metrics exporter

@@ -386,10 +386,11 @@ prometheus_port=9617
 Set `video_enabled=0` for intercom installations without video support.
 Set `outgoing_call_timeout` to the maximum number of seconds an outgoing ring
 should wait before the daemon sends SIP `CANCEL` and returns to idle.
-Set `mqtt_timezone` to the WiBox wall-clock timezone, for example
-`Europe/Madrid`. The stock clock often stores local wall time while reporting
-UTC, so this lets the daemon publish `last_ring` and `last_unlock` with the
-correct offset for Home Assistant.
+Set `/mnt/mtd/TZ` on the WiBox to a POSIX timezone string, for example
+`CET-1CEST,M3.5.0/2,M10.5.0/3` for Spain/central Europe. `run.sh` exports
+that file as `TZ` before the daemon starts, and the MQTT code uses the process
+timezone for `last_unlock`. The `mqtt_timezone` config key is kept only as a
+legacy fallback.
 
 Do not commit real MQTT credentials. Store them only on the device.
 
@@ -461,26 +462,21 @@ Main entities:
 
 ```text
 button.open_door
-binary_sensor.ringing
-binary_sensor.call_active
-binary_sensor.video_active
 sensor.media_state
 sensor.firmware_version
 sensor.firmware_commit
 sensor.firmware_build_timestamp
-sensor.last_ring
 sensor.last_unlock
 sensor.wifi_rssi
 switch.video_enabled
 ```
 
+`sensor.media_state` is the main call lifecycle state. It moves through
+`idle`, `ringing` and `established`.
 `sensor.firmware_build_timestamp` is published as a UTC ISO-8601 timestamp.
-`sensor.last_ring` and `sensor.last_unlock` are published as ISO-8601
-timestamps using `mqtt_timezone`, because they come from the WiBox wall clock at
-runtime.
-`binary_sensor.sip_call_active` is still published for diagnostics, but is
-disabled by default in Home Assistant because `binary_sensor.call_active` is the
-normal user-facing call state.
+`sensor.last_unlock` is published as an ISO-8601 timestamp using the WiBox
+process timezone, which is sourced from `/mnt/mtd/TZ` at boot.
+
 
 The door command is high-level:
 
@@ -510,16 +506,12 @@ wibox_info{version,commit,build_timestamp} 1
 wibox_uptime_seconds
 wibox_health
 wibox_mqtt_connected
-wibox_call_active
-wibox_sip_call_active
-wibox_video_active
 wibox_video_enabled
 wibox_ringing
 wibox_rings_total
 wibox_calls_started_total
 wibox_video_sessions_started_total
 wibox_door_unlocks_total
-wibox_last_ring_timestamp_seconds
 wibox_last_unlock_timestamp_seconds
 wibox_wifi_rssi_dbm
 ```
