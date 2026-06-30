@@ -1,11 +1,17 @@
 # Installation Guide
 
-Read [`README.md`](README.md) first. It explains the project purpose, supported
-firmware versions, build flow and normal flashing path.
+Read [`README.md`](README.md) first. This is the short checklist.
 
-This file is the focused installation and recovery checklist.
+## 1. Get A Shell
 
-## 1. Confirm Device Access
+Choose the access method before doing anything else:
+
+| Stock firmware / condition | Access method |
+|----------------------------|---------------|
+| B007 or B010 and telnet works | Telnet |
+| B013 or newer | Serial |
+| Telnet does not work | Serial |
+| Device no longer boots normally | U-Boot recovery |
 
 Network-based first installation has only been tested from:
 
@@ -14,9 +20,9 @@ V500.R001.A103.00.G0021.B007
 V500.R001.A103.00.G0021.B010
 ```
 
-`V500.R001.A103.00.G021.B013` blocks telnet. For B013 or newer, use serial.
+B013 blocks telnet.
 
-Default shell credentials when available:
+Telnet credentials usually are:
 
 ```text
 root / qv2008
@@ -28,47 +34,19 @@ Some Sofia console sessions use:
 root / aszeno
 ```
 
-## 2. Prepare Serial Recovery
-
-Unplug the WiBox before opening the case or attaching serial wires. Do not
-solder while the board is powered.
-
-Use a serial terminal such as `picocom` or `minicom`. Configure it for `115200`
-baud and disable hardware flow control.
+For serial, use `picocom` or `minicom` at `115200` baud with hardware flow
+control disabled:
 
 ```bash
 picocom -b 115200 /dev/ttyUSB0
 ```
 
-Or:
+Unplug the WiBox before opening the case or attaching serial wires. Do not
+solder while the board is powered.
 
-```bash
-minicom -s
-```
+## 2. Back Up Flash
 
-| WiBox board | USB TTL adapter |
-|-------------|-----------------|
-| GND         | GND             |
-| TX          | RX              |
-| RX          | TX              |
-
-![Serial connector](docs/img/serial.jpg)
-
-If no boot messages appear, set the console in U-Boot:
-
-```sh
-setenv consoledev 'ttySGK0'
-saveenv
-reset
-```
-
-## 3. Back Up Flash
-
-The build needs the factory `/usr` partition:
-
-```text
-./mtd4
-```
+The build needs the factory `/usr` partition as `./mtd4`.
 
 On your computer:
 
@@ -78,7 +56,7 @@ for i in $(seq 0 6); do
 done
 ```
 
-On the WiBox:
+On the WiBox shell:
 
 ```sh
 PC_IP=192.168.1.100
@@ -88,7 +66,9 @@ for i in $(seq 0 6); do
 done
 ```
 
-## 4. Configure Persistent WiFi
+Copy `mtd4` into the repository root.
+
+## 3. Configure Persistent WiFi
 
 This is required before flashing. If this file is missing or wrong, the custom
 firmware will not reconnect to WiFi after reboot and you will need serial
@@ -108,7 +88,7 @@ network={
 }
 ```
 
-## 5. Build
+## 4. Build
 
 ```bash
 make docker
@@ -123,10 +103,9 @@ Final image:
 release/latest
 ```
 
-## 6. First Flash From Stock Firmware
+## 5. First Flash
 
-Stock firmware does not have SSH/dropbear, so upload `release/latest` with
-`nc`.
+### Telnet Shell
 
 On your computer:
 
@@ -134,7 +113,7 @@ On your computer:
 nc -l -p 8888 < release/latest
 ```
 
-On the WiBox:
+On the WiBox shell:
 
 ```sh
 PC_IP=192.168.1.100
@@ -144,7 +123,27 @@ sync
 reboot
 ```
 
-## 7. Later Updates With Custom Firmware
+### Serial Shell
+
+Transfer `release/latest` to `/tmp/update.img`.
+
+If `rx` is available:
+
+```sh
+cd /tmp
+rx update.img
+```
+
+Send `release/latest` from `minicom` using XMODEM, then write it:
+
+```sh
+ls -lh /tmp/update.img
+dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
+sync
+reboot
+```
+
+## 6. Later Updates With Custom Firmware
 
 After the custom firmware is installed, SSH is available:
 
@@ -157,15 +156,19 @@ make flash CONFIRM_FLASH=YES
 reboot
 ```
 
-## 8. Recovery Via Shell
+## 7. Recovery Via Shell
 
 Use this when the custom firmware is already installed, Linux boots and serial
 shell works.
 
-Use `picocom`, `minicom`, or an equivalent serial terminal at `115200` baud with
-hardware flow control disabled.
-
 Transfer `release/latest` to `/tmp/update.img`, then run:
+
+```sh
+/usr/bin/update_firmware.sh
+reboot
+```
+
+If the updater is unavailable, write manually:
 
 ```sh
 dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
@@ -173,7 +176,7 @@ sync
 reboot
 ```
 
-## 9. Recovery Via U-Boot
+## 8. Recovery Via U-Boot
 
 Use this when Linux does not boot far enough for a shell.
 

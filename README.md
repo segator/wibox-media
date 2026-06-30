@@ -86,15 +86,41 @@ Safety notes:
 
 ## Fresh Device Journey
 
-The first install has shared preparation steps, then two possible install
-transports:
+Follow these steps in order. The important idea is simple: first get a shell on
+the stock WiBox, then back it up, then build and flash the custom image.
 
-- **Network install** for tested B007/B010 units where telnet works.
-- **Serial install** for B013/newer, units without telnet, or recovery cases.
+### 1. Choose How You Will Get A Shell
 
-### 1. Choose Access Method
+Use this decision first, because backup and first flash both require a shell on
+the WiBox.
 
-B007/B010 stock firmware normally exposes telnet:
+| Stock firmware / condition | Access method |
+|----------------------------|---------------|
+| B007 or B010 and telnet works | Telnet |
+| B013 or newer | Serial |
+| Telnet does not work | Serial |
+| Device no longer boots normally | U-Boot recovery |
+
+Network-based first installation has only been tested on:
+
+```text
+V500.R001.A103.00.G0021.B007
+V500.R001.A103.00.G0021.B010
+```
+
+`V500.R001.A103.00.G021.B013` blocks telnet, so use serial for B013 or newer.
+
+### 2. Connect To The WiBox
+
+#### Option A: Telnet Shell For B007/B010
+
+B007/B010 stock firmware normally exposes telnet.
+
+```bash
+telnet 192.168.1.10
+```
+
+Common credentials:
 
 ```text
 user: root
@@ -108,10 +134,14 @@ user: root
 pass: aszeno
 ```
 
-If telnet works, use the network install transport later in this guide. If login
-fails, or the unit is B013/newer, use serial.
+If telnet login fails, use the serial option below.
 
-Serial terminal options:
+#### Option B: Serial Shell
+
+Use serial for B013/newer firmware, for devices without telnet, or for recovery.
+
+Use a serial terminal such as `picocom` or `minicom`. Configure it for `115200`
+baud and disable hardware flow control.
 
 ```bash
 picocom -b 115200 /dev/ttyUSB0
@@ -123,8 +153,7 @@ Or:
 minicom -s
 ```
 
-Serial settings: `115200` baud, hardware flow control disabled. The WiBox
-console is `ttySGK2`.
+The WiBox console is `ttySGK2`.
 
 | WiBox board | USB TTL adapter |
 |-------------|-----------------|
@@ -136,14 +165,25 @@ console is `ttySGK2`.
 ![WiBox board](docs/img/board.jpg)
 ![WiBox back board](docs/img/backboard.jpg)
 
-### 2. Back Up the Factory Flash
+If nothing appears on serial during boot, enter U-Boot and set:
 
-At minimum, keep a copy of `mtd4`, the `/usr` cramfs partition. This repository
-builds the custom image by extracting that partition and replacing selected
-files.
+```sh
+setenv consoledev 'ttySGK0'
+saveenv
+reset
+```
 
-On a stock device there is no SSH/dropbear yet, so use `nc`. Start a receiver
-on your computer:
+To enter U-Boot, connect the serial console, power the board, and press Enter
+immediately. The bootloader wait window is about one second after power is
+applied.
+
+### 3. Back Up The Factory Flash
+
+Do this before flashing. At minimum, keep `mtd4`, the factory `/usr` cramfs
+partition. This project builds the custom image by extracting that partition and
+replacing selected files.
+
+On your computer, start a receiver:
 
 ```bash
 for i in $(seq 0 6); do
@@ -151,7 +191,7 @@ for i in $(seq 0 6); do
 done
 ```
 
-Then run on the WiBox, replacing the IP:
+On the WiBox shell, replacing the IP with your computer IP:
 
 ```sh
 PC_IP=192.168.1.100
@@ -161,7 +201,11 @@ for i in $(seq 0 6); do
 done
 ```
 
-The file needed by this project is `mtd4`.
+Copy the `mtd4` backup into the repository root on your computer:
+
+```bash
+cp mtd4 /path/to/wibox-media/mtd4
+```
 
 After the custom firmware is running, future backups can use:
 
@@ -169,7 +213,7 @@ After the custom firmware is running, future backups can use:
 make backup-mtd4
 ```
 
-### 3. Configure Persistent WiFi
+### 4. Configure Persistent WiFi
 
 This step is critical. Configure it before flashing the custom image.
 
@@ -177,7 +221,7 @@ If `/mnt/mtd/wpa_supplicant.conf` is missing or wrong, the custom firmware will
 not be able to join your WiFi network after reboot. You will lose network access
 and will need serial access to fix it.
 
-Create `/mnt/mtd/wpa_supplicant.conf` on the WiBox:
+On the WiBox shell, create `/mnt/mtd/wpa_supplicant.conf`:
 
 ```ini
 ctrl_interface=/var/run/wpa_supplicant
@@ -193,7 +237,7 @@ network={
 
 The generated firmware uses this file to bring WiFi back after boot.
 
-### 4. Build the Firmware on Your Computer
+### 5. Build The Firmware On Your Computer
 
 Build the project Docker image:
 
@@ -219,7 +263,7 @@ release/image-YYMMDD-HHMM
 release/latest -> image-YYMMDD-HHMM
 ```
 
-### 5. Verify the Local Image
+### 6. Verify The Local Image
 
 Before the first flash, only local verification is possible:
 
@@ -235,9 +279,60 @@ make verify-device
 make verify
 ```
 
-### 6. Configure SIP, Video and MQTT
+### 7. Flash The First Custom Image
 
-The runtime config lives on the WiBox:
+Use the same shell access method you used for backup.
+
+#### If You Are Using Telnet
+
+On your computer, serve the generated image:
+
+```bash
+nc -l -p 8888 < release/latest
+```
+
+On the WiBox telnet shell, download it and write it to the `/usr` partition:
+
+```sh
+PC_IP=192.168.1.100
+nc "${PC_IP}" 8888 > /tmp/update.img
+dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
+sync
+reboot
+```
+
+#### If You Are Using Serial Shell
+
+The goal is to place `release/latest` on the WiBox as `/tmp/update.img`, then
+write it to `mtd4`.
+
+If `rx` is available on the WiBox:
+
+```sh
+cd /tmp
+rx update.img
+```
+
+Then, from `minicom`, use the send-file menu and send `release/latest` with
+XMODEM. Some terminal programs also support YMODEM; either is fine as long as
+it creates `/tmp/update.img`.
+
+After transfer:
+
+```sh
+ls -lh /tmp/update.img
+dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
+sync
+reboot
+```
+
+#### If Linux Does Not Boot To A Shell
+
+Use the [U-Boot recovery](#3-recovery-via-u-boot) steps.
+
+### 8. Configure SIP, Video And MQTT
+
+After the custom firmware boots, edit the runtime config on the WiBox:
 
 ```text
 /mnt/mtd/sip_media.conf
@@ -275,73 +370,7 @@ Set `video_enabled=0` for intercom installations without video support.
 
 Do not commit real MQTT credentials. Store them only on the device.
 
-### 7. Install The First Custom Image
-
-Use one of the two transports below:
-
-- [Option A: Network install with telnet and nc](#option-a-network-install-with-telnet-and-nc)
-- [Option B: Serial install](#option-b-serial-install)
-
-#### Option A: Network Install With Telnet And nc
-
-Use this on tested B007/B010 stock firmware when telnet works.
-
-On your computer, serve the generated image:
-
-```bash
-nc -l -p 8888 < release/latest
-```
-
-On the WiBox, download it and write it to the `/usr` partition:
-
-```sh
-PC_IP=192.168.1.100
-nc "${PC_IP}" 8888 > /tmp/update.img
-dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
-sync
-reboot
-```
-
-The stock image is not expected to have our guarded updater. After the custom
-firmware is installed, use the later-update tooling instead of raw `dd`.
-
-#### Option B: Serial Install
-
-Use this for B013/newer firmware, units without telnet, or recovery cases.
-
-The goal is to place `release/latest` on the WiBox as `/tmp/update.img`, then
-run the updater.
-
-If Linux boots to a serial shell, use a terminal file-transfer feature. With
-`rx` available on the WiBox:
-
-```sh
-cd /tmp
-rx update.img
-```
-
-Then, from `minicom`, use the send-file menu and send `release/latest` with
-XMODEM. Some terminal programs also support YMODEM; either is fine as long as
-it creates `/tmp/update.img`.
-
-After the transfer finishes, write it to the `/usr` partition:
-
-```sh
-ls -lh /tmp/update.img
-dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
-sync
-reboot
-```
-
-The stock image is not expected to have our guarded updater. After the custom
-firmware is installed, use the later-update tooling instead of raw `dd`.
-
-If Linux does not boot far enough for a shell, use the
-[U-Boot recovery](#3-recovery-via-u-boot) steps. To enter U-Boot, connect the
-serial console, power the board, and press Enter immediately; the bootloader
-wait window is about one second after power is applied.
-
-### 8. Later Flashes With Custom Firmware
+### 9. Later Updates With Custom Firmware
 
 After this firmware is installed, dropbear SSH is available and future updates
 should use the guarded tooling:
