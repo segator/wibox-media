@@ -151,8 +151,13 @@ start cron and heartbeat
 run Sofia_temp.sh once for video hardware warmup
 create /mnt/mtd/sip_media.conf if missing
 start app_watchdog.sh wibox-media-daemon /usr/bin/wibox-media-daemon
+run /mnt/mtd/post.sh if it exists and is executable
 set final LED state
 ```
+
+`/mnt/mtd/post.sh` is a local boot hook for site-specific extras that should
+survive firmware updates. Keep it small and do not start Sofia, `sip_media`, or
+another media daemon from it.
 
 `app_watchdog.sh` supervises the daemon. If it exits, it writes
 `/var/log/wibox-media-daemon.log`, rotates that log, waits a few seconds and

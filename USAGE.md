@@ -46,6 +46,17 @@ make verify-device
 This uploads `wibox-media-daemon` to `/tmp`, restarts it, verifies its checksum
 and checks MQTT discovery/state.
 
+## Local Boot Hook
+
+For site-specific startup extras, create an executable file on the device:
+
+```bash
+/mnt/mtd/post.sh
+```
+
+`run.sh` executes it after starting `wibox-media-daemon`. Do not use this hook
+to start Sofia or a second media runtime.
+
 ## Flash
 
 ```bash

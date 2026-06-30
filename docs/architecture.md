@@ -70,6 +70,35 @@ wibox-media-daemon
 
 The daemon owns serial, SIP, audio, video worker lifecycle, DTMF and MQTT.
 
+## LED Policy
+
+Current LED ownership stays in `run.sh` because those LEDs describe boot and
+network health before the daemon exists:
+
+```text
+red   booting or WiFi failure
+off   WiFi setup in progress
+green WiFi associated and DHCP succeeded
+blue  production boot complete, daemon started
+```
+
+Do not move this initial GPIO setup into the daemon yet. `gpio.sh` also
+initializes board lines that must be ready before media startup, including the
+audio chip enable line on GPIO 18.
+
+If we later want call-state LEDs, add a daemon-owned GPIO module with an
+explicit priority model instead of overloading `wifi_led()`:
+
+```text
+boot/network state  handled by run.sh until daemon starts
+runtime idle        blue
+ringing             blinking blue or green
+active call         green
+error/media fault   red
+```
+
+That should be a separate change with device-side visual verification.
+
 ## Home Assistant Model
 
 Expose state reactively. Do not expose manual `start_call` or `stop_call`

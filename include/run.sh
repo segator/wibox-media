@@ -132,6 +132,10 @@ if [ ! -x "/usr/bin/wibox-media-daemon" ]; then
 fi
 /usr/bin/app_watchdog.sh wibox-media-daemon /usr/bin/wibox-media-daemon &
 
+if [ -x "/mnt/mtd/post.sh" ]; then
+  /mnt/mtd/post.sh
+fi
+
 # remove lock if present
 rm -f /tmp/heartbeat.lock
 
