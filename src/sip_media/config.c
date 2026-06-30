@@ -57,6 +57,10 @@ void config_init_defaults(wibox_config_t* config) {
     config->mqtt_device_id[0] = '\0';
     config->mqtt_device_name[0] = '\0';
 
+    // Prometheus metrics exporter
+    config->prometheus_enabled = 1;
+    config->prometheus_port = 9617;
+
     // Audio Configuration
     config->audio_buffer_size = 160;
     config->audio_chip_gpio = 18;
@@ -154,6 +158,10 @@ static int parse_config_line(const char* line, wibox_config_t* config) {
     } else if (strcmp(key, "mqtt_device_name") == 0) {
         strncpy(config->mqtt_device_name, value, sizeof(config->mqtt_device_name) - 1);
         config->mqtt_device_name[sizeof(config->mqtt_device_name) - 1] = '\0';
+    } else if (strcmp(key, "prometheus_enabled") == 0) {
+        config->prometheus_enabled = atoi(value);
+    } else if (strcmp(key, "prometheus_port") == 0) {
+        config->prometheus_port = atoi(value);
     } else if (strcmp(key, "mqtt_pub_path") == 0) {
         return 0; /* legacy shell-client config, ignored */
     } else if (strcmp(key, "mqtt_sub_path") == 0) {
@@ -243,6 +251,8 @@ void config_print(const wibox_config_t* config) {
     printf("mqtt_base_topic = %s\n", config->mqtt_base_topic);
     printf("mqtt_device_id = %s\n", config->mqtt_device_id);
     printf("mqtt_device_name = %s\n", config->mqtt_device_name);
+    printf("prometheus_enabled = %d\n", config->prometheus_enabled);
+    printf("prometheus_port = %d\n", config->prometheus_port);
     printf("audio_buffer_size = %d\n", config->audio_buffer_size);
     printf("audio_chip_gpio = %d\n", config->audio_chip_gpio);
     printf("============================\n");

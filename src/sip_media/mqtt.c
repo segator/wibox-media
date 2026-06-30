@@ -893,3 +893,7 @@ void mqtt_stop(void) {
         mqtt_state.sock = -1;
     }
 }
+
+int mqtt_is_connected(void) {
+    return mqtt_state.enabled && mqtt_state.connected;
+}

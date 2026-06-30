@@ -377,6 +377,9 @@ mqtt_host=192.168.10.2
 mqtt_user=mqtt
 mqtt_pass=password
 mqtt_homeassistant_prefix=homeassistant
+
+prometheus_enabled=1
+prometheus_port=9617
 ```
 
 Set `video_enabled=0` for intercom installations without video support.
@@ -473,6 +476,39 @@ wibox/<device>/door/open/set = PRESS
 
 Home Assistant should not need to orchestrate `START_CALL`, unlock and
 `STOP_CALL`; the daemon handles that sequence.
+
+## Prometheus Metrics
+
+The daemon exposes a small Prometheus exporter by default:
+
+```text
+http://<wibox-ip>:9617/metrics
+http://<wibox-ip>:9617/healthz
+```
+
+Disable it with `prometheus_enabled=0` or change the port with
+`prometheus_port`.
+
+Main metrics:
+
+```text
+wibox_info{version,commit,build_timestamp} 1
+wibox_uptime_seconds
+wibox_health
+wibox_mqtt_connected
+wibox_call_active
+wibox_sip_call_active
+wibox_video_active
+wibox_video_enabled
+wibox_ringing
+wibox_rings_total
+wibox_calls_started_total
+wibox_video_sessions_started_total
+wibox_door_unlocks_total
+wibox_last_ring_timestamp_seconds
+wibox_last_unlock_timestamp_seconds
+wibox_wifi_rssi_dbm
+```
 
 ## Firmware Metadata
 

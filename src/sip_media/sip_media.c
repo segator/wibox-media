@@ -22,6 +22,7 @@
 #include "intercom.h"        // Our communication with the intercom
 #include "config.h"          // Configuration management
 #include "mqtt.h"            // MQTT/Home Assistant integration
+#include "prometheus.h"      // Prometheus metrics exporter
 #include "audio_hw.h"        // Direct GADI audio hardware access
 #include "video_worker.h"    // In-daemon D1 H.264 RTP worker
 
@@ -507,6 +508,10 @@ static void on_call_state_change(sip_call_state_t old_state, sip_call_state_t ne
         mqtt_publish_sip_call_active(1);
         mqtt_publish_ringing(0);
         mqtt_publish_media_state("established");
+        prometheus_set_call_active(1);
+        prometheus_set_sip_call_active(1);
+        prometheus_set_ringing(0);
+        prometheus_inc_call_started();
     }
 
     // Handle call termination - ONLY send STOP_CALL if we're ending an ESTABLISHED call
@@ -520,6 +525,10 @@ static void on_call_state_change(sip_call_state_t old_state, sip_call_state_t ne
         mqtt_publish_sip_call_active(0);
         mqtt_publish_video_active(0);
         mqtt_publish_media_state("idle");
+        prometheus_set_call_active(0);
+        prometheus_set_sip_call_active(0);
+        prometheus_set_video_active(0);
+        prometheus_set_ringing(0);
     }
 
     // Handle non-established call termination (no intercom command needed)
@@ -532,6 +541,10 @@ static void on_call_state_change(sip_call_state_t old_state, sip_call_state_t ne
         mqtt_publish_sip_call_active(0);
         mqtt_publish_video_active(0);
         mqtt_publish_media_state("idle");
+        prometheus_set_call_active(0);
+        prometheus_set_sip_call_active(0);
+        prometheus_set_video_active(0);
+        prometheus_set_ringing(0);
     }
 }
 
@@ -594,6 +607,8 @@ static void start_video_session(const char* remote_ip, int remote_video_port) {
     PJ_LOG(3,(THIS_FILE, "Started in-daemon video worker pid=%d to %s:%d payload=%d",
               video_bridge_pid, remote_ip, remote_video_port, payload_type));
     mqtt_publish_video_active(1);
+    prometheus_set_video_active(1);
+    prometheus_inc_video_started();
 }
 
 static void stop_video_session(void) {
@@ -610,6 +625,8 @@ static void stop_video_session(void) {
         pid_t r = waitpid(video_bridge_pid, &status, WNOHANG);
         if (r == video_bridge_pid) {
             video_bridge_pid = -1;
+            mqtt_publish_video_active(0);
+            prometheus_set_video_active(0);
             return;
         }
         usleep(100000);
@@ -619,6 +636,7 @@ static void stop_video_session(void) {
     waitpid(video_bridge_pid, &status, 0);
     video_bridge_pid = -1;
     mqtt_publish_video_active(0);
+    prometheus_set_video_active(0);
 }
 
 static void unlock_door(const char* source) {
@@ -626,6 +644,7 @@ static void unlock_door(const char* source) {
     if (intercom_send_command(INTERCOM_CMD_UNLOCK_DOOR) == 0) {
         printf("Door unlock command sent successfully\n");
         mqtt_publish_last_unlock();
+        prometheus_inc_door_unlock();
     } else {
         printf("Failed to send door unlock command\n");
     }
@@ -652,6 +671,7 @@ static void mqtt_set_video_enabled_callback(int enabled, void* user_data) {
     app_config.video_enabled = enabled ? 1 : 0;
     printf("MQTT video_enabled set to %d\n", app_config.video_enabled);
     mqtt_publish_video_enabled(app_config.video_enabled);
+    prometheus_set_video_enabled(app_config.video_enabled);
 }
 
 static void handle_audio_test_control(const char* message) {
@@ -722,6 +742,8 @@ static void handle_ding_trigger(const char* source) {
     mqtt_publish_ringing(1);
     mqtt_publish_last_ring();
     mqtt_publish_media_state("ringing");
+    prometheus_set_ringing(1);
+    prometheus_inc_ring();
 
     PJ_LOG(3,(THIS_FILE, "Making outgoing call due to %s", source ? source : "DING"));
     status = sip_calling_make_call();
@@ -1534,6 +1556,10 @@ int main(int argc, char *argv[]) {
     mqtt_callbacks.open_door = mqtt_open_door_callback;
     mqtt_callbacks.set_video_enabled = mqtt_set_video_enabled_callback;
     mqtt_init(&app_config, local_ip, &mqtt_callbacks, NULL);
+    if (app_config.prometheus_enabled && prometheus_start(app_config.prometheus_port) < 0) {
+        printf("Warning: Failed to start Prometheus exporter\n");
+    }
+    prometheus_set_video_enabled(app_config.video_enabled);
 
     // Install signal handlers
     signal(SIGINT, signal_handler);
@@ -1671,6 +1697,7 @@ int main(int argc, char *argv[]) {
 
     // Cleanup
     mqtt_stop();
+    prometheus_stop();
     stop_serial_monitoring();
     stop_ding_monitoring();
     stop_video_session();

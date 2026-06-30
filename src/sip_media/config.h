@@ -32,6 +32,10 @@ typedef struct {
     char mqtt_device_id[128];
     char mqtt_device_name[128];
 
+    // Prometheus metrics exporter
+    int prometheus_enabled;
+    int prometheus_port;
+
     // Audio Configuration
     int audio_buffer_size;
     int audio_chip_gpio;

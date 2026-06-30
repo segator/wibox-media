@@ -12,6 +12,7 @@ int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
               const mqtt_callbacks_t* callbacks, void* user_data);
 int mqtt_start(void);
 void mqtt_stop(void);
+int mqtt_is_connected(void);
 
 void mqtt_publish_online(void);
 void mqtt_publish_offline(void);
