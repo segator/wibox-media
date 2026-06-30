@@ -12,6 +12,8 @@ Working:
 - Real camera image when the intercom call line is enabled through the MCU serial
   port.
 - Correct real-time-ish frame pacing after matching Sofia's frame interval ioctl.
+- The working path is integrated into `src/sip_media/video_worker.c` and runs as
+  part of `wibox-media-daemon`.
 
 Still not fully independent:
 
@@ -20,18 +22,18 @@ Still not fully independent:
 - The full VI/sensor/decoder init sequence still needs to be reproduced to remove
   the boot warmup dependency.
 
-## Operational Flow
+## Operational Flow Inside The Daemon
 
 Current reliable flow:
 
 1. Boot the WiBox.
-2. Let Sofia run for about 30 seconds.
-3. Kill Sofia and its watchdog/tracer wrapper.
+2. `run.sh` starts `Sofia_temp.sh` for the one-time video hardware warmup.
+3. `run.sh` starts `wibox-media-daemon`.
 4. For each call:
-   - send the MCU "start call" command;
-   - run or reuse the D1 capture path;
-   - send media over RTP/SIP;
-   - send the MCU "stop call" command.
+   - `wibox-media-daemon` sends the MCU "start call" command;
+   - the in-daemon video worker starts the D1 capture path;
+   - H.264 NAL units are packetized as RTP and sent to the negotiated SIP peer;
+   - `wibox-media-daemon` sends the MCU "stop call" command on hangup.
 
 Serial commands:
 
@@ -49,59 +51,22 @@ printf "\xfb\x12\x01\x1e" > /dev/ttySGK1
 Important: without the start-call command, VENC can still produce a valid D1 H.264
 bitstream, but the image content is not the real camera image.
 
-## Build
+## Test Entry Points
+
+The standalone capture PoC has been removed. Use the daemon-local test API:
 
 ```sh
-docker run --rm \
-  -v $(pwd):/work \
-  -v /home/aymerici/config/GK710X_LinuxSDK_v2.0.0:/sdk \
-  wibox-build:latest \
-  arm-goke-linux-uclibcgnueabi-gcc -static -std=gnu99 \
-  -I/work/include/adi \
-  -I/sdk/adi/include \
-  -I/sdk/install/arm11-gcc-uClibc-linux-GK710XS/include \
-  -o /work/d1_video_capture /work/src/d1_video_capture.c \
-  /sdk/install/arm11-gcc-uClibc-linux-GK710XS/lib/libadi.a \
-  -lpthread -lm
+echo 'VIDEO_TEST 192.168.0.183 4014 5' > /tmp/pipe_sip
 ```
 
-Upload through base64 because dropbear on the device has no SFTP support:
-
-```sh
-base64 d1_video_capture | ssh root@192.168.0.196 \
-  "base64 -d > /tmp/d1_video_capture && chmod +x /tmp/d1_video_capture"
-```
-
-## Capture Test
-
-```sh
-ssh root@192.168.0.196 '
-  killall Sofia Sofia_temp.sh sofia_trace system_sofia timeout d1_video_capture 2>/dev/null || true
-  printf "\xfb\x14\x01\x20" > /dev/ttySGK1
-  sleep 1
-  /tmp/d1_video_capture /tmp/d1_capture.h264 10
-  printf "\xfb\x14\x00\x1f" > /dev/ttySGK1
-'
-```
-
-Fetch:
-
-```sh
-ssh root@192.168.0.196 'base64 /tmp/d1_capture.h264' | base64 -d > d1_capture.h264
-ffprobe -v error -select_streams v:0 \
-  -show_entries stream=codec_name,profile,width,height,coded_width,coded_height \
-  -of default=noprint_wrappers=1 d1_capture.h264
-```
-
-Expected:
+Expected daemon behavior:
 
 ```text
-codec_name=h264
-profile=Main
-width=688
-height=576
-coded_width=688
-coded_height=576
+start panel call context
+initialize D1 video worker
+capture stream_id == 0 frames
+send RTP H.264 to 192.168.0.183:4014
+stop panel call context
 ```
 
 ## Internal Sequence
@@ -190,5 +155,5 @@ test to take minutes to collect 300 frames.
 - OSD/date overlay is not configured by this path. Sofia sets up OSD separately.
 - `START_ENCODE` for mask `0x2` has returned `EINVAL` in this test path, while
   masks `0x1` and `0x4` start.
-- Audio is not handled here. The next integration step is to inspect
-  `wibox-audio` and combine audio RTP with this H.264 stream.
+- Audio is handled separately by `src/sip_media/audio_hw.c` and shares the SIP
+  call lifecycle with this video worker.

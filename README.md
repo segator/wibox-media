@@ -27,13 +27,12 @@ This project builds on earlier hard work from:
   tracing work and audio base that made the current audio integration possible
   and gave us the path to add video.
 
-![Home Assistant integration](docs/img/homeassistant.png)
-
 ## Repository Layout
 
 ```text
 src/sip_media/                  wibox-media-daemon source
-src/d1_video_capture.c          standalone D1 H.264 capture proof
+src/sip_media/video_worker.c    D1 H.264 RTP video worker
+src/sip_media/audio_hw.c        direct GADI audio hardware bridge
 include/                        files copied into the generated /usr image
 scripts/                        build, deploy, verify and flash tooling
 docs/                           architecture, hardware and research docs
@@ -46,15 +45,17 @@ release/latest                  generated firmware image
 
 This firmware is intended for Fermax WiBox GK7102S units.
 
-You need a device firmware version:
+Network-based first installation has only been tested from these vendor
+firmwares:
 
 ```text
-V500.R001.A103.00.G0021.B010 or older
+V500.R001.A103.00.G0021.B007
+V500.R001.A103.00.G0021.B010
 ```
 
-If your unit runs a newer firmware, assume network shell access may be disabled
-or incomplete. Use the serial recovery path instead of trying to flash over
-WiFi/SSH.
+`V500.R001.A103.00.G021.B013` is known to block telnet, so there is no network
+shell path from a stock device. Use [serial recovery](#2-prepare-serial-access)
+for B013 or newer firmware.
 
 ## What You Need
 
@@ -70,10 +71,10 @@ On your computer:
 $HOME/config/GK710X_LinuxSDK_v2.0.0
 ```
 
-On the WiBox:
+On the stock WiBox:
 
-- SSH or serial access as `root`.
-- WiFi configured in `/mnt/mtd/wpa_supplicant.conf`.
+- Telnet access on B007/B010, or serial access.
+- WiFi credentials ready for `/mnt/mtd/wpa_supplicant.conf`.
 - Serial recovery access prepared before first flash.
 
 Safety notes:
@@ -83,13 +84,11 @@ Safety notes:
 - Prepare serial recovery before first flash. A bad `/usr` image can stop WiFi
   from coming up.
 
-![Serial connector](docs/img/serial.jpg)
-
 ## Fresh Device Journey
 
 ### 1. Check Firmware Version
 
-Log into the WiBox if the current firmware allows it:
+B007/B010 stock firmware normally exposes telnet:
 
 ```text
 user: root
@@ -103,10 +102,10 @@ user: root
 pass: aszeno
 ```
 
-If the firmware is newer than `V500.R001.A103.00.G0021.B010`, skip WiFi/SSH
-flashing and use serial recovery.
+If the unit is B013 or newer, telnet is blocked. Skip network installation and
+use serial.
 
-### 2. Prepare Serial Recovery
+### 2. Prepare Serial Access
 
 The serial console is `ttySGK2`, `115200`, no hardware flow control.
 
@@ -116,6 +115,7 @@ The serial console is `ttySGK2`, `115200`, no hardware flow control.
 | TX          | RX              |
 | RX          | TX              |
 
+![Serial connector](docs/img/serial.jpg)
 ![WiBox board](docs/img/board.jpg)
 ![WiBox back board](docs/img/backboard.jpg)
 
@@ -127,20 +127,17 @@ saveenv
 reset
 ```
 
+Serial is mandatory for B013 or newer firmware and is the recovery path if the
+custom image does not boot.
+
 ### 3. Back Up the Factory Flash
 
 At minimum, keep a copy of `mtd4`, the `/usr` cramfs partition. This repository
 builds the custom image by extracting that partition and replacing selected
 files.
 
-If SSH is already available and this repo is on your computer:
-
-```bash
-make backup-mtd4
-cp backups/mtd4-*.img ./mtd4
-```
-
-For a full manual backup from the device, start a receiver on your computer:
+On a stock device there is no SSH/dropbear yet, so use `nc`. Start a receiver
+on your computer:
 
 ```bash
 for i in $(seq 0 6); do
@@ -160,7 +157,13 @@ done
 
 The file needed by this project is `mtd4`.
 
-### 4. Configure WiFi Persistence
+After the custom firmware is running, future backups can use:
+
+```bash
+make backup-mtd4
+```
+
+### 4. Configure Persistent WiFi
 
 Create `/mnt/mtd/wpa_supplicant.conf` on the WiBox:
 
@@ -178,7 +181,7 @@ network={
 
 The generated firmware uses this file to bring WiFi back after boot.
 
-### 5. Build the Firmware
+### 5. Build the Firmware on Your Computer
 
 Build the project Docker image:
 
@@ -203,24 +206,21 @@ release/image-YYMMDD-HHMM
 release/latest -> image-YYMMDD-HHMM
 ```
 
-### 6. Verify Before Flashing
+### 6. Verify the Local Image
 
-If the current WiBox is reachable, first test the daemon from `/tmp` without
-writing flash:
+Before the first flash, only local verification is possible:
 
 ```bash
-make deploy-runtime
-make verify-device
+make test
+make verify-image
 ```
 
-Then verify the full local image:
+After the custom firmware is running, full device verification is available:
 
 ```bash
+make verify-device
 make verify
 ```
-
-`make verify` runs the host MQTT regression test, checks the generated image,
-and validates the active WiBox daemon plus MQTT retained state.
 
 ### 7. Configure SIP, Video and MQTT
 
@@ -262,33 +262,49 @@ Set `video_enabled=0` for intercom installations without video support.
 
 Do not commit real MQTT credentials. Store them only on the device.
 
-### 8. Flash Over SSH
+### 8. First Flash From Stock Firmware
 
-Run the guarded dry run first:
+On B007/B010 stock firmware, upload the generated image with `nc`.
+
+On your computer:
+
+```bash
+nc -l -p 8888 < release/latest
+```
+
+On the WiBox:
+
+```sh
+PC_IP=192.168.1.100
+nc "${PC_IP}" 8888 > /tmp/update.img
+/usr/bin/update_firmware.sh
+reboot
+```
+
+If `/usr/bin/update_firmware.sh` is not available on the stock image, manual
+write is the fallback:
+
+```sh
+dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
+sync
+reboot
+```
+
+### 9. Later Flashes With Custom Firmware
+
+After this firmware is installed, dropbear SSH is available and future updates
+should use the guarded tooling:
 
 ```bash
 make flash-dry-run
-```
-
-This builds the image, uploads or reuses `/tmp/update.img`, checks hashes and
-stops before writing flash.
-
-Create a verified backup of the current `/usr` partition:
-
-```bash
 make backup-mtd4
-```
-
-Flash:
-
-```bash
 make flash CONFIRM_FLASH=YES
 reboot
 ```
 
-`make flash` automatically runs `backup-mtd4` before writing. The flash script
-confirms that `mtd4` is mounted as `/usr`, verifies the image hash, then calls
-the bundled `/usr/bin/update_firmware.sh`.
+`make flash-dry-run` builds the image, uploads or reuses `/tmp/update.img`,
+checks hashes and stops before writing flash. `make flash` automatically runs
+`backup-mtd4` before writing.
 
 ## Runtime Behavior
 
@@ -448,5 +464,6 @@ The current D1 video path is documented in:
 - [`docs/sip_media.md`](docs/sip_media.md)
 - [`docs/architecture.md`](docs/architecture.md)
 
-Reverse-engineering traces are kept under `research/`. They are not part of
-the production runtime.
+The standalone D1 capture PoC was removed after the SIP media daemon absorbed
+the working video path. Reverse-engineering traces are kept under `research/`.
+They are not part of the production runtime.

@@ -14,10 +14,10 @@ via kernel ioctls using the GADI SDK (`libadi.a`) for initialization only.
 - `research/SOFIA_IOCTL_ANALYSIS.md` — full trace analysis of Sofia's 4,969 ioctls (thread map, init sequence, streaming sequence)
 
 **Source code:**
-- `src/d1_video_capture.c` — consolidated working D1 H.264 capture test.
-- `src/audio_bridge/` — working GADI audio hardware bridge imported from `wibox-audio`.
-- `src/sip_media/` — SIP/RTP audio app extended to advertise video and launch `video_rtp_bridge`.
-- `src/video_rtp_bridge/` — D1 H.264 RTP sender derived from the verified video capture path.
+- `src/sip_media/` — `wibox-media-daemon`: SIP, RTP audio/video, serial intercom, DTMF, MQTT/Home Assistant.
+- `src/sip_media/video_worker.c` — integrated D1 H.264 RTP worker derived from the verified capture path.
+- `src/sip_media/audio_hw.c` — direct GADI audio hardware path imported from `wibox-audio`.
+- `src/audio_bridge/` and `src/video_rtp_bridge/` — retained source/debug references, not packaged runtime binaries.
 
 **Sofia ioctl traces (ground truth):**
 - `sofia_ioctls_captured.log` — full ioctl trace from Sofia (root/working dir copy)
@@ -57,7 +57,7 @@ docker run --rm -v $(pwd):/work -v /path/to/sdk:/sdk wibox-build:latest \
 ## Current State (as of 2026-06-29)
 
 ### What works
-- `src/d1_video_capture.c` captures H.264 `stream_id==0` from the main D1 encoder.
+- `wibox-media-daemon` captures and sends H.264 `stream_id==0` from the main D1 encoder.
 - Resolution verified by `ffprobe`: `688x576`, H.264 Main profile.
 - Real camera image works when the MCU call path is enabled with `/dev/ttySGK1`.
 - Sofia is still required as a one-time warmup after boot, but not per call.
@@ -71,20 +71,19 @@ docker run --rm -v $(pwd):/work -v /path/to/sdk:/sdk wibox-build:latest \
 | 3 | type3 | preview |
 
 ### Current video workflow
-1. Start Sofia once after boot and let it warm up for about 30 seconds.
-2. Kill Sofia.
-3. Start call video path: `printf "\xfb\x14\x01\x20" > /dev/ttySGK1`.
-4. Run `/tmp/d1_video_capture /tmp/d1_capture.h264 10`.
-5. Stop call video path: `printf "\xfb\x14\x00\x1f" > /dev/ttySGK1`.
-6. Verify with `ffprobe`; expected resolution is `688x576`.
+1. `run.sh` starts `Sofia_temp.sh` once after boot for the video hardware warmup.
+2. `run.sh` starts `wibox-media-daemon`.
+3. On a SIP call, the daemon sends `START_CALL` to `/dev/ttySGK1`.
+4. The in-daemon video worker captures D1 `stream_id==0` and sends RTP H.264.
+5. On hangup, the daemon stops video/audio and sends `STOP_CALL`.
 
 ### SIP media integration
-- `audio_bridge`, `sip_media`, and `video_rtp_bridge` build and are included in firmware.
-- `sip_media` advertises PCMA audio plus H.264 video in SDP.
-- On established calls, `sip_media` sends `START_CALL`, starts audio RTP, and forks
-  `video_rtp_bridge` for D1 H.264 RTP.
+- `wibox-media-daemon` builds and is the only packaged media runtime binary.
+- `wibox-media-daemon` advertises PCMA audio plus H.264 video in SDP.
+- On established calls, the daemon sends `START_CALL`, starts direct GADI audio RTP,
+  and forks the in-daemon video worker for D1 H.264 RTP.
 - On hangup, it stops video, stops audio, and sends `STOP_CALL`.
-- End-to-end SIP video negotiation still needs a real call test.
+- End-to-end MicroSIP audio/video and DTMF door unlock have been verified.
 
 ## Key Technical Facts
 

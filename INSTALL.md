@@ -7,13 +7,14 @@ This file is the focused installation and recovery checklist.
 
 ## 1. Confirm Device Access
 
-Supported WiBox firmware for network-based installation:
+Network-based first installation has only been tested from:
 
 ```text
-V500.R001.A103.00.G0021.B010 or older
+V500.R001.A103.00.G0021.B007
+V500.R001.A103.00.G0021.B010
 ```
 
-For newer firmware, prepare serial and use the recovery/U-Boot path.
+`V500.R001.A103.00.G021.B013` blocks telnet. For B013 or newer, use serial.
 
 Default shell credentials when available:
 
@@ -58,15 +59,6 @@ The build needs the factory `/usr` partition:
 ./mtd4
 ```
 
-If SSH works:
-
-```bash
-make backup-mtd4
-cp backups/mtd4-*.img ./mtd4
-```
-
-Manual full backup:
-
 On your computer:
 
 ```bash
@@ -106,7 +98,8 @@ network={
 ```bash
 make docker
 make build
-make verify
+make test
+make verify-image
 ```
 
 Final image:
@@ -115,31 +108,52 @@ Final image:
 release/latest
 ```
 
-## 6. Test Without Flashing
+## 6. First Flash From Stock Firmware
+
+Stock firmware does not have SSH/dropbear, so upload `release/latest` with
+`nc`.
+
+On your computer:
+
+```bash
+nc -l -p 8888 < release/latest
+```
+
+On the WiBox:
+
+```sh
+PC_IP=192.168.1.100
+nc "${PC_IP}" 8888 > /tmp/update.img
+/usr/bin/update_firmware.sh
+reboot
+```
+
+If the updater is unavailable:
+
+```sh
+dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
+sync
+reboot
+```
+
+## 7. Later Updates With Custom Firmware
+
+After the custom firmware is installed, SSH is available:
 
 ```bash
 make deploy-runtime
 make verify-device
-```
-
-## 7. Flash Over SSH
-
-```bash
 make flash-dry-run
 make backup-mtd4
 make flash CONFIRM_FLASH=YES
 reboot
 ```
 
-`make flash` runs `backup-mtd4` automatically, but running it explicitly first
-makes the backup path visible before writing.
-
 ## 8. Recovery Via Shell
 
 Use this when Linux boots and serial shell works.
 
-Transfer `release/latest` to `/tmp/update.img` using your terminal file
-transfer support, then run:
+Transfer `release/latest` to `/tmp/update.img`, then run:
 
 ```sh
 /usr/bin/update_firmware.sh

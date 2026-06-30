@@ -622,8 +622,9 @@ Resultados sin éxito:
 | `src/d1_capture_v2.c` | SDK correcto + raw ioctl (renombrado a `src/d1_video_capture.c`) |
 | `src/d1_factory.c` | Experimento factory config (retirado) |
 
-Los binarios y capturas intermedias se limpiaron del repo. La unica prueba de video
-conservada en `src/` es `src/d1_video_capture.c`.
+Los binarios y capturas intermedias se limpiaron del repo. La prueba consolidada
+de video fue `src/d1_video_capture.c`; posteriormente se retiro al quedar el
+flujo integrado en `src/sip_media/video_worker.c`.
 
 ### Secuencia ioctl de Sofia (de sofia_ioctls_captured.log)
 
@@ -680,8 +681,9 @@ nuestra secuencia actual.
 - Solución: filtrar stream_id==0 para obtener D1
 
 **Siguiente test en ese momento:** ejecutar el enfoque factory después de Sofia warmup,
-capturando `stream_id==0`. Ese enfoque quedo reemplazado por la prueba consolidada
-`src/d1_video_capture.c`.
+capturando `stream_id==0`. Ese enfoque quedo reemplazado por la prueba
+consolidada `src/d1_video_capture.c`, retirada mas tarde tras integrarse en el
+daemon.
 
 ## Actualización 2026-06-29 — D1 confirmado sin Sofia
 
@@ -788,13 +790,17 @@ La documentación consolidada del flujo está en `docs/d1_video_capture.md`.
 
 ## Actualización 2026-06-29 — limpieza de pruebas
 
-Se limpio `src/` para dejar una sola prueba de video mantenible:
+Se limpio `src/` para dejar una sola prueba de video mantenible en ese momento:
 
 - `src/d1_video_capture.c`
 
 Se retiraron los PoC y experimentos antiguos (`d1_capture.c`, `d1_factory.c`,
 `sip_media_*`, `src/gadi_tests/*`) porque sus hallazgos ya estan incorporados en
 la documentacion y en la prueba consolidada.
+
+Actualizacion posterior: `src/d1_video_capture.c` tambien se retiro una vez que
+el flujo D1 quedo integrado en `wibox-media-daemon` mediante
+`src/sip_media/video_worker.c`.
 
 Siguiente fase: revisar el proyecto `wibox-audio`, reutilizar el trabajo de captura
 de audio ya existente e integrar audio + video como media SIP/RTP por llamada.
