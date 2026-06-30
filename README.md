@@ -33,6 +33,22 @@ This runs inside Docker:
 
 Output: `release/image-YYMMDD-HHMM` (~4.8 MB, must fit within the 11 MB mtd4 partition).
 
+### Runtime test on WiBox
+
+Before flashing, deploy only the daemon to `/tmp` and restart it with the
+persistent `/mnt/mtd/sip_media.conf`:
+
+```bash
+make deploy-runtime
+make status
+```
+
+Override connection settings when needed:
+
+```bash
+make deploy-runtime WIBOX_IP=192.168.0.196 WIBOX_USER=root WIBOX_PASS=qv2008
+```
+
 ## What's inside the firmware
 
 | Component | Description |
@@ -47,15 +63,19 @@ Output: `release/image-YYMMDD-HHMM` (~4.8 MB, must fit within the 11 MB mtd4 par
 
 ### Normal flash (WiFi/SSH working)
 
-```bash
-# Upload image to WiBox
-nc -lvp 8888 < release/latest      # on your PC
-nc 192.168.1.100 8888 > /tmp/fw.img  # on WiBox
+Use the guarded Make target. It uploads `release/latest` to `/tmp/update.img`,
+checks the local and remote hashes, confirms `mtd4` is the `/usr` partition, then
+runs `/usr/bin/update_firmware.sh` on the device.
 
-# Flash mtd4
-dd if=/tmp/fw.img of=/dev/mtdblock4
+```bash
+make flash-dry-run
+make flash CONFIRM_FLASH=YES
 reboot
 ```
+
+`make flash-dry-run` performs the upload and all non-destructive checks, then
+stops before writing mtd4. Do not use raw `dd` for normal updates; the updater
+verifies the written image.
 
 ### Recovery flash (U-Boot via serial YMODEM)
 

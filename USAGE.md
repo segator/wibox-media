@@ -19,6 +19,29 @@ mqtt_user=mqtt
 mqtt_pass=password
 ```
 
+## Build and deploy
+
+Build host tests, the daemon, and the cramfs image:
+
+```bash
+make test
+make build
+```
+
+For a non-persistent runtime test, upload the daemon to `/tmp` and restart it:
+
+```bash
+make deploy-runtime
+make status
+```
+
+To persist the image to `/usr` (`mtd4`), use the guarded flash target:
+
+```bash
+make flash-dry-run
+make flash CONFIRM_FLASH=YES
+```
+
 ## Keep application working
 
 If you want to keep using Sofia original application,

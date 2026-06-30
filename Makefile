@@ -1,10 +1,13 @@
 .DEFAULT_GOAL := help
-.PHONY: docker docker-shell build build-inside build-media test extract patch pack clean help
+.PHONY: docker docker-shell build build-inside build-media test deploy-runtime flash flash-dry-run status extract patch pack clean help
 
 BUILD_DIR = cramfs
 FILE = mtd4
 DATE := $(shell date +%y%m%d-%H%M)
 IMAGE = wibox-build-tool:latest
+WIBOX_IP ?= 192.168.0.196
+WIBOX_USER ?= root
+WIBOX_PASS ?= qv2008
 
 # ── one-time: build the Docker build-tool ──────────────────────────
 docker:
@@ -24,6 +27,22 @@ build-media:
 
 test:
 	tests/mqtt_native_mock.py
+
+deploy-runtime: build-media
+	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
+		scripts/deploy_runtime.sh
+
+flash: build
+	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
+		CONFIRM_FLASH=$(CONFIRM_FLASH) scripts/flash_firmware.sh release/latest
+
+flash-dry-run: build
+	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
+		CONFIRM_FLASH=YES FLASH_DRY_RUN=1 scripts/flash_firmware.sh release/latest
+
+status:
+	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
+		scripts/device_status.sh
 
 build-inside: extract patch pack
 
@@ -65,6 +84,10 @@ help:
 	@echo "  2. make build     Build media binaries and firmware image (cramfs)"
 	@echo "  3. make build-media  Build wibox-media-daemon"
 	@echo "  4. make test      Run host-side regression tests"
+	@echo "  5. make deploy-runtime  Upload current daemon to /tmp and restart it"
+	@echo "  6. make flash CONFIRM_FLASH=YES  Flash release/latest to mtd4"
+	@echo "  7. make flash-dry-run  Validate flash upload/checks without writing mtd4"
+	@echo "  8. make status    Show WiBox runtime status"
 	@echo ""
 	@echo "  Prerequisite: factory mtd4 backup at ./mtd4"
 	@echo "  Output:        release/image-YYMMDD-HHMM"
