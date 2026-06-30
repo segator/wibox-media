@@ -9,6 +9,7 @@
 #include <sys/socket.h>      // Socket functions
 #include <netinet/in.h>      // Internet address family
 #include <arpa/inet.h>       // Internet operations
+#include <termios.h>         // Serial raw mode
 #include <sys/wait.h>        // Child process cleanup
 #include <fcntl.h>           // File control
 #include <pthread.h>         // POSIX threads
@@ -94,6 +95,7 @@ static void handle_video_test_control(const char* message);
 static void* serial_monitor_thread_func(void* arg);
 static int start_serial_monitoring(void);
 static void stop_serial_monitoring(void);
+static int configure_serial_raw(int fd);
 
 // Network recovery functions
 static int test_rtp_socket_health(void);
@@ -1087,10 +1089,18 @@ static void* serial_monitor_thread_func(void* arg) {
         ssize_t i;
 
         if (serial_fd < 0) {
-            serial_fd = open(app_config.intercom_device, O_RDONLY | O_NONBLOCK);
+            serial_fd = open(app_config.intercom_device, O_RDONLY | O_NONBLOCK | O_NOCTTY);
             if (serial_fd < 0) {
                 PJ_LOG(2,(THIS_FILE, "Failed to open %s for serial monitoring: %s",
                           app_config.intercom_device, strerror(errno)));
+                sleep(1);
+                continue;
+            }
+            if (configure_serial_raw(serial_fd) < 0) {
+                PJ_LOG(2,(THIS_FILE, "Failed to configure %s as raw serial: %s",
+                          app_config.intercom_device, strerror(errno)));
+                close(serial_fd);
+                serial_fd = -1;
                 sleep(1);
                 continue;
             }
@@ -1150,6 +1160,26 @@ static int start_serial_monitoring(void) {
     }
 
     PJ_LOG(3,(THIS_FILE, "Serial monitoring started"));
+    return 0;
+}
+
+static int configure_serial_raw(int fd) {
+    struct termios tio;
+
+    if (tcgetattr(fd, &tio) < 0) {
+        return -1;
+    }
+
+    cfmakeraw(&tio);
+    tio.c_cflag |= CREAD | CLOCAL;
+    tio.c_cc[VMIN] = 1;
+    tio.c_cc[VTIME] = 0;
+
+    if (tcsetattr(fd, TCSANOW, &tio) < 0) {
+        return -1;
+    }
+
+    tcflush(fd, TCIFLUSH);
     return 0;
 }
 
