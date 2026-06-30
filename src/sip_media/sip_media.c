@@ -523,6 +523,7 @@ static void on_call_state_change(sip_call_state_t old_state, sip_call_state_t ne
         stop_audio_session();
         mqtt_publish_call_active(0);
         mqtt_publish_sip_call_active(0);
+        mqtt_publish_ringing(0);
         mqtt_publish_video_active(0);
         mqtt_publish_media_state("idle");
         prometheus_set_call_active(0);
@@ -539,6 +540,7 @@ static void on_call_state_change(sip_call_state_t old_state, sip_call_state_t ne
         stop_audio_session();
         mqtt_publish_call_active(0);
         mqtt_publish_sip_call_active(0);
+        mqtt_publish_ringing(0);
         mqtt_publish_video_active(0);
         mqtt_publish_media_state("idle");
         prometheus_set_call_active(0);
