@@ -7,6 +7,7 @@ patch.log
 
 *.pcap
 *.img
+__pycache__/
 
 /d1_*.h264
 /d1_*.mp4
