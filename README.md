@@ -277,7 +277,10 @@ Do not commit real MQTT credentials. Store them only on the device.
 
 ### 7. Install The First Custom Image
 
-Use one of the two transports below.
+Use one of the two transports below:
+
+- [Option A: Network install with telnet and nc](#option-a-network-install-with-telnet-and-nc)
+- [Option B: Serial install](#option-b-serial-install)
 
 #### Option A: Network Install With Telnet And nc
 
@@ -289,23 +292,18 @@ On your computer, serve the generated image:
 nc -l -p 8888 < release/latest
 ```
 
-On the WiBox, download it and flash it:
+On the WiBox, download it and write it to the `/usr` partition:
 
 ```sh
 PC_IP=192.168.1.100
 nc "${PC_IP}" 8888 > /tmp/update.img
-/usr/bin/update_firmware.sh
-reboot
-```
-
-If `/usr/bin/update_firmware.sh` is not available on the stock image, manual
-write is the fallback:
-
-```sh
 dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
 sync
 reboot
 ```
+
+The stock image is not expected to have our guarded updater. After the custom
+firmware is installed, use the later-update tooling instead of raw `dd`.
 
 #### Option B: Serial Install
 
@@ -326,21 +324,17 @@ Then, from `minicom`, use the send-file menu and send `release/latest` with
 XMODEM. Some terminal programs also support YMODEM; either is fine as long as
 it creates `/tmp/update.img`.
 
-After the transfer finishes:
+After the transfer finishes, write it to the `/usr` partition:
 
 ```sh
 ls -lh /tmp/update.img
-/usr/bin/update_firmware.sh
-reboot
-```
-
-If the updater is unavailable, manual write is the fallback:
-
-```sh
 dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
 sync
 reboot
 ```
+
+The stock image is not expected to have our guarded updater. After the custom
+firmware is installed, use the later-update tooling instead of raw `dd`.
 
 If Linux does not boot far enough for a shell, use the
 [U-Boot recovery](#3-recovery-via-u-boot) steps. To enter U-Boot, connect the
@@ -470,8 +464,8 @@ device updater.
 
 ### 2. Recovery Via Shell
 
-Use this if Linux boots but WiFi or normal startup is broken and you have serial
-shell access.
+Use this if the custom firmware is already installed, Linux boots, but WiFi or
+normal startup is broken and you have serial shell access.
 
 Use `picocom`, `minicom`, or an equivalent serial terminal at `115200` baud with
 hardware flow control disabled.

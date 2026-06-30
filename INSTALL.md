@@ -139,13 +139,6 @@ On the WiBox:
 ```sh
 PC_IP=192.168.1.100
 nc "${PC_IP}" 8888 > /tmp/update.img
-/usr/bin/update_firmware.sh
-reboot
-```
-
-If the updater is unavailable:
-
-```sh
 dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
 sync
 reboot
@@ -166,7 +159,8 @@ reboot
 
 ## 8. Recovery Via Shell
 
-Use this when Linux boots and serial shell works.
+Use this when the custom firmware is already installed, Linux boots and serial
+shell works.
 
 Use `picocom`, `minicom`, or an equivalent serial terminal at `115200` baud with
 hardware flow control disabled.
@@ -174,15 +168,9 @@ hardware flow control disabled.
 Transfer `release/latest` to `/tmp/update.img`, then run:
 
 ```sh
-/usr/bin/update_firmware.sh
-reboot
-```
-
-If the updater is unavailable, manual write is the last resort:
-
-```sh
 dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
 sync
+reboot
 ```
 
 ## 9. Recovery Via U-Boot
