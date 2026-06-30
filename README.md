@@ -27,20 +27,6 @@ This project builds on earlier hard work from:
   tracing work and audio base that made the current audio integration possible
   and gave us the path to add video.
 
-## Repository Layout
-
-```text
-src/sip_media/                  wibox-media-daemon source
-src/sip_media/video_worker.c    D1 H.264 RTP video worker
-src/sip_media/audio_hw.c        direct GADI audio hardware bridge
-include/                        files copied into the generated /usr image
-scripts/                        build, deploy, verify and flash tooling
-docs/                           architecture, hardware and research docs
-research/                       reverse-engineering notes and Sofia traces
-mtd4                            factory /usr cramfs backup, local only
-release/latest                  generated firmware image
-```
-
 ## Supported Starting Point
 
 This firmware is intended for Fermax WiBox GK7102S units.
@@ -272,12 +258,24 @@ make test
 make verify-image
 ```
 
-After the custom firmware is running, full device verification is available:
+After the custom firmware is running, device verification is available:
 
 ```bash
 make verify-device
+```
+
+`make verify-device` checks the real WiBox over SSH: the active
+`wibox-media-daemon` checksum must match the local build, then it validates
+MQTT/Home Assistant retained discovery and state using the device config.
+
+For a full local-plus-device check, run:
+
+```bash
 make verify
 ```
+
+`make verify` runs the host MQTT regression test, verifies `release/latest`
+contents, and then runs `make verify-device`.
 
 ### 7. Flash The First Custom Image
 
