@@ -143,7 +143,9 @@ def assert_present(seen, topic):
     return payload
 
 
-def assert_config(seen, component, object_id, expected_state_topic, no_device_class=False):
+def assert_config(seen, component, object_id, expected_state_topic,
+                  expected_device_class=None, no_device_class=False,
+                  expected_icon=None):
     topic = f"{MQTT_HA_PREFIX}/{component}/{HA_ID}_{object_id}/config"
     payload = assert_present(seen, topic)
     try:
@@ -156,10 +158,17 @@ def assert_config(seen, component, object_id, expected_state_topic, no_device_cl
         raise AssertionError(f"{topic} state_topic={state_topic!r}, expected {expected_state_topic!r}")
     if no_device_class and "device_class" in config:
         raise AssertionError(f"{topic} should not set device_class")
+    if expected_device_class is not None and config.get("device_class") != expected_device_class:
+        raise AssertionError(
+            f"{topic} device_class={config.get('device_class')!r}, expected {expected_device_class!r}"
+        )
+    if expected_icon is not None and config.get("icon") != expected_icon:
+        raise AssertionError(f"{topic} icon={config.get('icon')!r}, expected {expected_icon!r}")
     return config
 
 
-def assert_command_config(seen, component, object_id, expected_command_topic):
+def assert_command_config(seen, component, object_id, expected_command_topic,
+                          expected_icon=None):
     topic = f"{MQTT_HA_PREFIX}/{component}/{HA_ID}_{object_id}/config"
     payload = assert_present(seen, topic)
     try:
@@ -170,6 +179,8 @@ def assert_command_config(seen, component, object_id, expected_command_topic):
     command_topic = config.get("command_topic")
     if command_topic != expected_command_topic:
         raise AssertionError(f"{topic} command_topic={command_topic!r}, expected {expected_command_topic!r}")
+    if expected_icon is not None and config.get("icon") != expected_icon:
+        raise AssertionError(f"{topic} icon={config.get('icon')!r}, expected {expected_icon!r}")
     return config
 
 
@@ -179,10 +190,14 @@ def main():
         f"{MQTT_BASE_TOPIC}/media/state",
         f"{MQTT_BASE_TOPIC}/wifi/rssi",
         f"{MQTT_BASE_TOPIC}/video/enabled",
+        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_ringing/config",
         f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_call_active/config",
         f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_sip_call_active/config",
         f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_video_active/config",
         f"{MQTT_HA_PREFIX}/button/{HA_ID}_open_door/config",
+        f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_media_state/config",
+        f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_last_ring/config",
+        f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_last_unlock/config",
         f"{MQTT_HA_PREFIX}/switch/{HA_ID}_video_enabled/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_wifi_rssi/config",
     ]
@@ -200,12 +215,23 @@ def main():
     wifi_rssi = assert_present(seen, f"{MQTT_BASE_TOPIC}/wifi/rssi")
     video_enabled = assert_present(seen, f"{MQTT_BASE_TOPIC}/video/enabled")
 
+    assert_config(seen, "binary_sensor", "ringing", f"{MQTT_BASE_TOPIC}/ringing",
+                  expected_device_class="occupancy")
     assert_config(seen, "binary_sensor", "call_active", f"{MQTT_BASE_TOPIC}/call/active", no_device_class=True)
     assert_config(seen, "binary_sensor", "sip_call_active", f"{MQTT_BASE_TOPIC}/sip/active", no_device_class=True)
     assert_config(seen, "binary_sensor", "video_active", f"{MQTT_BASE_TOPIC}/video/active", no_device_class=True)
-    assert_command_config(seen, "button", "open_door", f"{MQTT_BASE_TOPIC}/door/open/set")
-    assert_config(seen, "switch", "video_enabled", f"{MQTT_BASE_TOPIC}/video/enabled")
-    assert_config(seen, "sensor", "wifi_rssi", f"{MQTT_BASE_TOPIC}/wifi/rssi")
+    assert_command_config(seen, "button", "open_door", f"{MQTT_BASE_TOPIC}/door/open/set",
+                          expected_icon="mdi:door-open")
+    assert_config(seen, "sensor", "media_state", f"{MQTT_BASE_TOPIC}/media/state",
+                  no_device_class=True, expected_icon="mdi:phone")
+    assert_config(seen, "sensor", "last_ring", f"{MQTT_BASE_TOPIC}/ringing/last",
+                  expected_device_class="timestamp", expected_icon="mdi:history")
+    assert_config(seen, "sensor", "last_unlock", f"{MQTT_BASE_TOPIC}/door/last_unlock",
+                  expected_device_class="timestamp", expected_icon="mdi:lock-open")
+    assert_config(seen, "switch", "video_enabled", f"{MQTT_BASE_TOPIC}/video/enabled",
+                  expected_icon="mdi:video")
+    assert_config(seen, "sensor", "wifi_rssi", f"{MQTT_BASE_TOPIC}/wifi/rssi",
+                  expected_device_class="signal_strength", expected_icon="mdi:wifi")
 
     print(f"[*] MQTT discovery/state OK for {MQTT_BASE_TOPIC}")
     print(f"    media/state={media_state} wifi/rssi={wifi_rssi} video/enabled={video_enabled}")
