@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/segator/wibox-media/compare/wibox-media-v0.3.1...wibox-media-v0.4.0) (2026-06-30)
+
+
+### Features
+
+* add Prometheus exporter ([5839e17](https://github.com/segator/wibox-media/commit/5839e17f0239b91f5d1c09242ea70e4077dcd5e0))
+
 ## [0.3.1](https://github.com/segator/wibox-media/compare/wibox-media-v0.3.0...wibox-media-v0.3.1) (2026-06-30)
 
 
