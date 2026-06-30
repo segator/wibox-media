@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: docker docker-shell build build-inside build-media test verify-mqtt verify-runtime deploy-runtime flash flash-dry-run status extract patch pack clean help
+.PHONY: docker docker-shell build build-inside build-media test verify-mqtt verify-runtime verify-device deploy-runtime flash flash-dry-run status extract patch pack clean help
 
 BUILD_DIR = cramfs
 FILE = mtd4
@@ -34,6 +34,10 @@ verify-mqtt:
 verify-runtime:
 	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
 		scripts/verify_runtime.sh
+
+verify-device:
+	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
+		scripts/verify_device.sh
 
 deploy-runtime: build-media
 	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
@@ -93,10 +97,11 @@ help:
 	@echo "  4. make test      Run host-side regression tests"
 	@echo "  5. make verify-mqtt  Verify Home Assistant MQTT discovery/state"
 	@echo "  6. make verify-runtime  Verify active WiBox daemon matches local binary"
-	@echo "  7. make deploy-runtime  Upload current daemon to /tmp and restart it"
-	@echo "  8. make flash CONFIRM_FLASH=YES  Flash release/latest to mtd4"
-	@echo "  9. make flash-dry-run  Validate flash upload/checks without writing mtd4"
-	@echo " 10. make status    Show WiBox runtime status"
+	@echo "  7. make verify-device  Verify runtime and MQTT using WiBox config"
+	@echo "  8. make deploy-runtime  Upload current daemon to /tmp and restart it"
+	@echo "  9. make flash CONFIRM_FLASH=YES  Flash release/latest to mtd4"
+	@echo " 10. make flash-dry-run  Validate flash upload/checks without writing mtd4"
+	@echo " 11. make status    Show WiBox runtime status"
 	@echo ""
 	@echo "  Prerequisite: factory mtd4 backup at ./mtd4"
 	@echo "  Output:        release/image-YYMMDD-HHMM"

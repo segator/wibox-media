@@ -40,11 +40,12 @@ persistent `/mnt/mtd/sip_media.conf`:
 
 ```bash
 make deploy-runtime
-make verify-runtime
-make status
+make verify-device
 ```
 
-Verify retained MQTT discovery and state with:
+`verify-device` checks the active WiBox daemon checksum and validates retained
+MQTT discovery/state using `/mnt/mtd/sip_media.conf` from the device. You can
+also verify retained MQTT discovery and state manually with:
 
 ```bash
 MQTT_HOST=192.168.10.2 MQTT_USER=mqtt MQTT_PASS=password make verify-mqtt
