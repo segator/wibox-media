@@ -41,9 +41,11 @@ jobs:
       - name: Log in to GHCR
         env:
           GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          if [ -n "${GHCR_READ_TOKEN}" ]; then
-            echo "${GHCR_READ_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          token="${GHCR_READ_TOKEN:-${GITHUB_TOKEN}}"
+          if [ -n "${token}" ]; then
+            echo "${token}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           fi
 
       - name: Build project Docker image
