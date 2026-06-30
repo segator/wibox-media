@@ -662,10 +662,14 @@ static void mqtt_open_door_callback(void* user_data) {
 
     printf("MQTT open door requested without active call; starting panel context\n");
     intercom_send_command(INTERCOM_CMD_START_CALL);
+    mqtt_publish_call_active(1);
+    prometheus_set_call_active(1);
     usleep(500000);
     unlock_door("mqtt");
     usleep(1000000);
     intercom_send_command(INTERCOM_CMD_STOP_CALL);
+    mqtt_publish_call_active(0);
+    prometheus_set_call_active(0);
 }
 
 static void mqtt_set_video_enabled_callback(int enabled, void* user_data) {
