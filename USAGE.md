@@ -32,6 +32,7 @@ For a non-persistent runtime test, upload the daemon to `/tmp` and restart it:
 
 ```bash
 make deploy-runtime
+make verify-runtime
 make status
 ```
 

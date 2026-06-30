@@ -40,6 +40,7 @@ persistent `/mnt/mtd/sip_media.conf`:
 
 ```bash
 make deploy-runtime
+make verify-runtime
 make status
 ```
 
