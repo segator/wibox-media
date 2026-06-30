@@ -4,6 +4,7 @@
       "release-type": "simple",
       "package-name": "wibox-media",
       "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false,
       "extra-files": [
         "README.md",
         "docs/getting_started.md"

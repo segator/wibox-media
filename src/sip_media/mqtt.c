@@ -621,15 +621,26 @@ static void clear_firmware_update_entities(void) {
 
 static int version_triplet(const char* input, int* major, int* minor, int* patch) {
     char clean[64];
+    const char* version_start = input;
 
     if (!input || !major || !minor || !patch) {
         return -1;
     }
-    while (*input == 'v' || *input == 'V') input++;
-    if (strncmp(input, "dev-", 4) == 0) {
+
+    if (strncmp(version_start, "wibox-media-", 12) == 0) {
+        version_start += 12;
+    } else {
+        const char* last_dash = strrchr(version_start, '-');
+        if (last_dash && last_dash[1] == 'v') {
+            version_start = last_dash + 1;
+        }
+    }
+
+    while (*version_start == 'v' || *version_start == 'V') version_start++;
+    if (strncmp(version_start, "dev-", 4) == 0) {
         return -2;
     }
-    strncpy(clean, input, sizeof(clean) - 1);
+    strncpy(clean, version_start, sizeof(clean) - 1);
     clean[sizeof(clean) - 1] = '\0';
     if (sscanf(clean, "%d.%d.%d", major, minor, patch) != 3) {
         return -1;
