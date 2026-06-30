@@ -32,27 +32,29 @@ verify-mqtt:
 	scripts/verify_mqtt.py
 
 verify-runtime:
-	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
+	@echo "[*] Verifying active WiBox runtime"
+	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
 		scripts/verify_runtime.sh
 
 verify-device:
-	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
+	@echo "[*] Verifying WiBox device"
+	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
 		scripts/verify_device.sh
 
 deploy-runtime: build-media
-	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
+	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
 		scripts/deploy_runtime.sh
 
 flash: build
-	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
+	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
 		CONFIRM_FLASH=$(CONFIRM_FLASH) scripts/flash_firmware.sh release/latest
 
 flash-dry-run: build
-	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
+	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
 		CONFIRM_FLASH=YES FLASH_DRY_RUN=1 scripts/flash_firmware.sh release/latest
 
 status:
-	WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
+	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
 		scripts/device_status.sh
 
 build-inside: extract patch pack
