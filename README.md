@@ -76,9 +76,9 @@ wibox-media-<version>.img
 Then use that file wherever this guide says `release/latest`.
 
 Building locally is only needed if you want to develop the firmware or verify a
-change before release. The factory `mtd4` backup and the minimal Goke SDK files
-used by the build are included in this repository so GitHub Actions can generate
-release images.
+change before release. The repository already includes the committed `mtd4`
+factory image and the minimal Goke SDK files used by the build so GitHub
+Actions can generate release images.
 
 ## Fresh Device Journey
 
@@ -421,6 +421,9 @@ Boot sequence:
   -> run /mnt/mtd/post.sh if executable
   -> set final LED state
 ```
+
+`run-orig.sh` is kept as the factory boot script. `run.sh` is the custom boot
+path used by this firmware.
 
 `app_watchdog.sh` restarts the daemon if it exits and writes:
 

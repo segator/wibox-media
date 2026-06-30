@@ -108,13 +108,11 @@ Entities:
 
 ```text
 button.wibox_open_door
-binary_sensor.wibox_ringing
-binary_sensor.wibox_call_active
-binary_sensor.wibox_sip_call_active
-binary_sensor.wibox_video_active
 sensor.wibox_media_state
-sensor.wibox_last_ring
-sensor.wibox_last_unlock
+sensor.wibox_firmware_version
+sensor.wibox_firmware_commit
+sensor.wibox_firmware_build_timestamp
+binary_sensor.wibox_door_unlocked
 sensor.wibox_wifi_rssi
 switch.wibox_video_enabled
 ```
@@ -143,22 +141,19 @@ Call state is reactive:
 ```text
 ALARM_REPORT from serial
   -> ringing=true
-  -> publish last_ring
   -> optionally place outgoing SIP call
 
 SIP incoming/outgoing established
-  -> call_active=true
   -> START_CALL to panel
   -> media active
 
 SIP BYE, serial hangup or timeout
-  -> call_active=false
   -> STOP_CALL if needed
   -> media stopped
 
 DTMF # or MQTT open_door
   -> unlock_door()
-  -> publish last_unlock
+  -> pulse door_unlocked
 ```
 
 ## Migration Phases
@@ -218,9 +213,8 @@ Goal:
   - `START_CALL`
   - `HANG_UP`
   - `CMD_STOP_RING`
-  - push/forward state codes currently handled by `listener.sh`
-- Daemon emits the same logical states currently published through scripts.
-- Stop starting `listener.sh` by default.
+- Daemon emits the same logical states that used to come from helper scripts.
+- No separate `listener.sh` process in the production image.
 
 Implementation:
 - `wibox-media-daemon` opens `/dev/ttySGK1` when
@@ -234,7 +228,7 @@ Implementation:
 - MQTT/Home Assistant publication remains in Phase 3.
 
 Verification:
-- Doorbell press triggers SIP call without `listener.sh`.
+- Doorbell press triggers SIP call from the daemon.
 - SIP incoming call still starts panel media context.
 - Hangup and timeout clear state and stop media.
 - DTMF/MQTT open door still unlocks.
@@ -258,8 +252,8 @@ Implementation:
 - MQTT transport is implemented in the daemon with a built-in MQTT 3.1.1
   client over plain TCP; no `mosquitto_pub/sub` binaries are packaged.
 - The daemon publishes the target Home Assistant model:
-  `button.open_door`, ringing/call/SIP/video binary sensors, media state,
-  last ring, last unlock, WiFi RSSI and `switch.video_enabled`.
+  `button.open_door`, `sensor.media_state`, firmware metadata,
+  `binary_sensor.door_unlocked`, WiFi RSSI and `switch.video_enabled`.
 - The only primary door command is `wibox/<id>/door/open/set = PRESS`.
 - `video/enabled/set` updates the in-memory per-call video flag.
 - If the broker is unavailable or rejects authentication, the daemon reconnects
@@ -329,7 +323,7 @@ Verification:
 - `make build-media` links `wibox-media-daemon` with direct audio hardware
   support and `libap.so`; `include/bin/audio_bridge` is absent.
 - WiBox smoke test starts only one `wibox-media-daemon` process; there is no
-  `audio_bridge`, `video_rtp_bridge` or `listener.sh` runtime process.
+  `audio_bridge` or `video_rtp_bridge` runtime process.
 - No `/tmp/audio_from_intercom` or `/tmp/audio_to_intercom` files are created.
 - `AUDIO_TEST 192.168.0.183 4012 5` starts the panel context, initializes
   GADI/AEC directly, sends 248 RTP audio packets / 39,680 payload bytes, then
@@ -344,8 +338,7 @@ Remaining:
 
 Goal:
 - Remove unused web UI from the generated image.
-- Remove `listener.sh`, `listener_mqtt.sh` and legacy MQTT helper scripts after
-  daemon replacement is verified.
+- Remove legacy helper scripts after daemon replacement is verified.
 
 Verification:
 - Firmware boots without web UI/scripts.
@@ -354,8 +347,8 @@ Verification:
 
 Implementation:
 - Removed web UI files from `include/web`.
-- Removed legacy `listener*.sh`, `mqtt_*.sh`, `heartbeat_mqtt.sh` and
-  packaged `mosquitto_pub/sub` clients from the generated image.
+- Removed legacy helper scripts and packaged `mosquitto_pub/sub` clients from
+  the generated image.
 - Removed the mosquitto-client build patch; MQTT is now daemon-native.
 
 Verification:
@@ -369,7 +362,7 @@ Verification:
   default config, and rejects legacy runtime artifacts.
 - `make verify-device` passes against the real WiBox and broker using the
   device's `/mnt/mtd/sip_media.conf`, with retained discovery/state validated
-  for the full 10-entity Home Assistant model.
+  for the current Home Assistant model.
 
 ## Production Invariants
 

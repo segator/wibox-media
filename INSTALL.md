@@ -46,7 +46,9 @@ solder while the board is powered.
 
 ## 2. Back Up Flash
 
-The build needs the factory `/usr` partition as `./mtd4`.
+The build uses the committed factory `/usr` image at `./mtd4`.
+Replace it only if you intentionally want to build from a different factory
+partition.
 
 On your computer:
 
@@ -66,7 +68,8 @@ for i in $(seq 0 6); do
 done
 ```
 
-Copy `mtd4` into the repository root.
+The repository already carries a known-good `mtd4`. You only need to replace
+it if you want to rebuild from a different factory image.
 
 ## 3. Configure Persistent WiFi
 
