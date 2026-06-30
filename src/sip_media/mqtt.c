@@ -396,60 +396,6 @@ static void clear_retained_topic(const char* topic) {
     mqtt_publish_raw(topic, "", 1);
 }
 
-static void configure_system_timezone(const wibox_config_t* app_config) {
-    char tz[128] = "";
-    FILE* fp;
-    const char* tz_path;
-    size_t len;
-
-    tz_path = getenv("WIBOX_TZ_PATH");
-    if (!tz_path || !tz_path[0]) {
-        tz_path = "/mnt/mtd/TZ";
-    }
-
-    fp = fopen(tz_path, "r");
-    if (fp) {
-        if (fgets(tz, sizeof(tz), fp)) {
-            tz[strcspn(tz, "\r\n")] = '\0';
-        }
-        fclose(fp);
-    }
-
-    if (!tz[0] && app_config && app_config->mqtt_timezone[0]) {
-        strncpy(tz, app_config->mqtt_timezone, sizeof(tz) - 1);
-        tz[sizeof(tz) - 1] = '\0';
-    }
-
-    if (tz[0]) {
-        setenv("TZ", tz, 1);
-    } else {
-        unsetenv("TZ");
-    }
-    tzset();
-
-    len = strlen(tz);
-    if (len > 0) {
-        printf("%s: timezone set to %s\n", MQTT_FILE, tz);
-    }
-}
-
-static void iso_now(char* out, size_t out_size) {
-    time_t now = time(NULL);
-    struct tm tm_value;
-    char wall_time[32];
-    char offset[8];
-
-    localtime_r(&now, &tm_value);
-    strftime(wall_time, sizeof(wall_time), "%Y-%m-%dT%H:%M:%S", &tm_value);
-    strftime(offset, sizeof(offset), "%z", &tm_value);
-    if (strlen(offset) == 5) {
-        snprintf(out, out_size, "%s%c%c%c:%c%c",
-                 wall_time, offset[0], offset[1], offset[2], offset[3], offset[4]);
-    } else {
-        snprintf(out, out_size, "%s+00:00", wall_time);
-    }
-}
-
 static void unique_id(char* out, size_t out_size, const char* suffix) {
     char norm_suffix[128];
     normalize_id(suffix, norm_suffix, sizeof(norm_suffix));
@@ -544,6 +490,26 @@ static void publish_video_switch_config(void) {
     mqtt_publish_raw(topic, payload, 1);
 }
 
+static void publish_unlock_binary_sensor_config(void) {
+    char topic[256];
+    char state_topic[256];
+    char uid[192];
+    char dev[512];
+    char payload[1536];
+
+    discovery_topic(topic, sizeof(topic), "binary_sensor", "door_unlocked");
+    topic_path(state_topic, sizeof(state_topic), "door/unlocked");
+    unique_id(uid, sizeof(uid), "door_unlocked");
+    device_json(dev, sizeof(dev));
+
+    snprintf(payload, sizeof(payload),
+             "{\"name\":\"Door Unlocked\",\"unique_id\":\"%s\","
+             "\"state_topic\":\"%s\",\"payload_on\":\"ON\",\"payload_off\":\"OFF\","
+             "\"availability_topic\":\"%s\",\"icon\":\"mdi:lock-open\",%s}",
+             uid, state_topic, mqtt_state.base_topic, dev);
+    mqtt_publish_raw(topic, payload, 1);
+}
+
 static void clear_legacy_entities(void) {
     char topic[256];
 
@@ -562,6 +528,12 @@ static void clear_legacy_entities(void) {
     clear_retained_topic(topic);
     topic_path(topic, sizeof(topic), "video/active");
     clear_retained_topic(topic);
+    topic_path(topic, sizeof(topic), "ringing/last");
+    clear_retained_topic(topic);
+    discovery_topic(topic, sizeof(topic), "sensor", "last_unlock");
+    clear_retained_topic(topic);
+    topic_path(topic, sizeof(topic), "door/last_unlock");
+    clear_retained_topic(topic);
 }
 
 void mqtt_publish_discovery(void) {
@@ -574,7 +546,7 @@ void mqtt_publish_discovery(void) {
     publish_sensor_config("firmware_commit", "Firmware Commit", "firmware/commit", "", "source-commit");
     publish_sensor_config("firmware_build_timestamp", "Firmware Build Timestamp",
                           "firmware/build_timestamp", "timestamp", "clock-outline");
-    publish_sensor_config("last_unlock", "Last Unlock", "door/last_unlock", "timestamp", "lock-open");
+    publish_unlock_binary_sensor_config();
     publish_sensor_config("wifi_rssi", "WiFi RSSI", "wifi/rssi", "signal_strength", "wifi");
     publish_video_switch_config();
 }
@@ -619,10 +591,10 @@ void mqtt_publish_firmware_version(void) {
     publish_suffix("firmware/build_timestamp", WIBOX_BUILD_TIMESTAMP, 1);
 }
 
-void mqtt_publish_last_unlock(void) {
-    char value[64];
-    iso_now(value, sizeof(value));
-    publish_suffix("door/last_unlock", value, 1);
+void mqtt_publish_door_unlocked_pulse(void) {
+    publish_suffix("door/unlocked", "ON", 1);
+    sleep(1);
+    publish_suffix("door/unlocked", "OFF", 1);
 }
 
 void mqtt_publish_wifi_stats(void) {
@@ -812,6 +784,7 @@ static void* mqtt_thread_func(void* arg) {
         mqtt_publish_online();
         mqtt_publish_media_state("idle");
         mqtt_publish_firmware_version();
+        publish_suffix("door/unlocked", "OFF", 1);
         mqtt_publish_video_enabled(mqtt_state.video_enabled);
         mqtt_publish_wifi_stats();
 
@@ -862,7 +835,6 @@ int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
     strncpy(mqtt_state.ha_prefix, app_config->mqtt_homeassistant_prefix, sizeof(mqtt_state.ha_prefix) - 1);
     strncpy(mqtt_state.local_ip, local_ip ? local_ip : "0.0.0.0", sizeof(mqtt_state.local_ip) - 1);
     mqtt_state.video_enabled = app_config->video_enabled;
-    configure_system_timezone(app_config);
 
     get_hostname(hostname, sizeof(hostname));
     if (app_config->mqtt_device_id[0]) {

@@ -204,7 +204,7 @@ def main():
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_version/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_commit/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_build_timestamp/config",
-        f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_last_unlock/config",
+        f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_door_unlocked/config",
         f"{MQTT_HA_PREFIX}/switch/{HA_ID}_video_enabled/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_wifi_rssi/config",
         f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_ringing/config",
@@ -242,8 +242,11 @@ def main():
                   no_device_class=True, expected_icon="mdi:source-commit")
     assert_config(seen, "sensor", "firmware_build_timestamp", f"{MQTT_BASE_TOPIC}/firmware/build_timestamp",
                   expected_device_class="timestamp", expected_icon="mdi:clock-outline")
-    assert_config(seen, "sensor", "last_unlock", f"{MQTT_BASE_TOPIC}/door/last_unlock",
-                  expected_device_class="timestamp", expected_icon="mdi:lock-open")
+    assert_absent(seen, f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_last_ring/config")
+    assert_absent(seen, f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_last_unlock/config")
+    assert_absent(seen, f"{MQTT_BASE_TOPIC}/door/last_unlock")
+    assert_config(seen, "binary_sensor", "door_unlocked", f"{MQTT_BASE_TOPIC}/door/unlocked",
+                  expected_icon="mdi:lock-open")
     assert_config(seen, "switch", "video_enabled", f"{MQTT_BASE_TOPIC}/video/enabled",
                   expected_icon="mdi:video")
     assert_config(seen, "sensor", "wifi_rssi", f"{MQTT_BASE_TOPIC}/wifi/rssi",

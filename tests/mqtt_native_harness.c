@@ -57,7 +57,7 @@ int main(void) {
         usleep(100000);
     }
 
-    mqtt_publish_last_unlock();
+    mqtt_publish_door_unlocked_pulse();
     mqtt_stop();
     printf("RESULT open=%d video=%d\n", state.open_count, state.video_value);
     return (state.open_count == 1 && state.video_value == 0) ? 0 : 1;

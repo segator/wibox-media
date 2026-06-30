@@ -645,7 +645,7 @@ static void unlock_door(const char* source) {
     printf("Unlocking door from %s\n", source ? source : "unknown");
     if (intercom_send_command(INTERCOM_CMD_UNLOCK_DOOR) == 0) {
         printf("Door unlock command sent successfully\n");
-        mqtt_publish_last_unlock();
+        mqtt_publish_door_unlocked_pulse();
         prometheus_inc_door_unlock();
     } else {
         printf("Failed to send door unlock command\n");

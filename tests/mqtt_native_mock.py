@@ -5,7 +5,6 @@ import subprocess
 import sys
 import threading
 import time
-import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -99,74 +98,67 @@ def broker(published):
 
 
 def main():
-    tz_file = Path("/tmp/wibox-test-TZ")
-    tz_file.write_text("CET-1CEST,M3.5.0/2,M10.5.0/3\n")
-    try:
-        build = [
-            "gcc",
-            "-Wall",
-            "-Wextra",
-            "-std=gnu99",
-            "-pthread",
-            '-DWIBOX_VERSION="test-version"',
-            '-DWIBOX_COMMIT="test-commit"',
-            '-DWIBOX_BUILD_TIMESTAMP="2026-06-30T09:30:00Z"',
-            "-Isrc/sip_media",
-            "tests/mqtt_native_harness.c",
-            "src/sip_media/mqtt.c",
-            "src/sip_media/config.c",
-            "-o",
-            str(HARNESS),
-        ]
-        subprocess.run(build, cwd=ROOT, check=True)
+    build = [
+        "gcc",
+        "-Wall",
+        "-Wextra",
+        "-std=gnu99",
+        "-pthread",
+        '-DWIBOX_VERSION="test-version"',
+        '-DWIBOX_COMMIT="test-commit"',
+        '-DWIBOX_BUILD_TIMESTAMP="2026-06-30T09:30:00Z"',
+        "-Isrc/sip_media",
+        "tests/mqtt_native_harness.c",
+        "src/sip_media/mqtt.c",
+        "src/sip_media/config.c",
+        "-o",
+        str(HARNESS),
+    ]
+    subprocess.run(build, cwd=ROOT, check=True)
 
-        published = []
-        thread = threading.Thread(target=broker, args=(published,), daemon=True)
-        thread.start()
-        time.sleep(0.1)
+    published = []
+    thread = threading.Thread(target=broker, args=(published,), daemon=True)
+    thread.start()
+    time.sleep(0.1)
 
-        env = os.environ.copy()
-        env["WIBOX_TZ_PATH"] = str(tz_file)
-        proc = subprocess.run([str(HARNESS)], cwd=ROOT, text=True, capture_output=True, env=env)
-        thread.join(timeout=2)
-        sys.stdout.write(proc.stdout)
-        sys.stderr.write(proc.stderr)
+    proc = subprocess.run([str(HARNESS)], cwd=ROOT, text=True, capture_output=True)
+    thread.join(timeout=2)
+    sys.stdout.write(proc.stdout)
+    sys.stderr.write(proc.stderr)
 
-        if proc.returncode != 0:
-            return proc.returncode
-        if not any(topic.startswith("homeassistant/") for topic, _ in published):
-            print("missing Home Assistant discovery publish", file=sys.stderr)
-            return 1
-        if ("wibox/test", "online") not in published:
-            print("missing retained online publish", file=sys.stderr)
-            return 1
-        if ("wibox/test/firmware/version", "test-version") not in published:
-            print("missing retained firmware version publish", file=sys.stderr)
-            return 1
-        if ("wibox/test/firmware/commit", "test-commit") not in published:
-            print("missing retained firmware commit publish", file=sys.stderr)
-            return 1
-        if ("wibox/test/firmware/build_timestamp", "2026-06-30T09:30:00Z") not in published:
-            print("missing retained firmware build timestamp publish", file=sys.stderr)
-            return 1
-        if not any(topic == "wibox/test/door/last_unlock" and body.endswith("+02:00") for topic, body in published):
-            print("missing timezone-aware last_unlock publish", file=sys.stderr)
-            return 1
-        if not any(topic.endswith("_firmware_version/config") for topic, _ in published):
-            print("missing firmware version Home Assistant discovery publish", file=sys.stderr)
-            return 1
-        if not any(topic.endswith("_firmware_commit/config") for topic, _ in published):
-            print("missing firmware commit Home Assistant discovery publish", file=sys.stderr)
-            return 1
-        if not any(topic.endswith("_firmware_build_timestamp/config") for topic, _ in published):
-            print("missing firmware build timestamp Home Assistant discovery publish", file=sys.stderr)
-            return 1
-        return 0
-    finally:
-        try:
-            tz_file.unlink()
-        except FileNotFoundError:
-            pass
+    if proc.returncode != 0:
+        return proc.returncode
+    if not any(topic.startswith("homeassistant/") for topic, _ in published):
+        print("missing Home Assistant discovery publish", file=sys.stderr)
+        return 1
+    if ("wibox/test", "online") not in published:
+        print("missing retained online publish", file=sys.stderr)
+        return 1
+    if ("wibox/test/firmware/version", "test-version") not in published:
+        print("missing retained firmware version publish", file=sys.stderr)
+        return 1
+    if ("wibox/test/firmware/commit", "test-commit") not in published:
+        print("missing retained firmware commit publish", file=sys.stderr)
+        return 1
+    if ("wibox/test/firmware/build_timestamp", "2026-06-30T09:30:00Z") not in published:
+        print("missing retained firmware build timestamp publish", file=sys.stderr)
+        return 1
+    if not any(topic == "wibox/test/door/unlocked" and body == "ON" for topic, body in published):
+        print("missing unlock ON publish", file=sys.stderr)
+        return 1
+    if not any(topic == "wibox/test/door/unlocked" and body == "OFF" for topic, body in published):
+        print("missing unlock OFF publish", file=sys.stderr)
+        return 1
+    if not any(topic.endswith("_firmware_version/config") for topic, _ in published):
+        print("missing firmware version Home Assistant discovery publish", file=sys.stderr)
+        return 1
+    if not any(topic.endswith("_firmware_commit/config") for topic, _ in published):
+        print("missing firmware commit Home Assistant discovery publish", file=sys.stderr)
+        return 1
+    if not any(topic.endswith("_firmware_build_timestamp/config") for topic, _ in published):
+        print("missing firmware build timestamp Home Assistant discovery publish", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

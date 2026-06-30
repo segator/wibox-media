@@ -1,7 +1,6 @@
 #!/bin/sh
 
 [ -f "/mnt/mtd/passwd" ] && mount --bind /mnt/mtd/passwd /etc/passwd
-[ -f "/mnt/mtd/TZ" ] && export TZ=$(cat /mnt/mtd/TZ)
 
 echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
 
