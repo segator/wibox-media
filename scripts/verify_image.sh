@@ -48,6 +48,7 @@ require_absent() {
 require_file "bin/wibox-media-daemon"
 require_file "bin/app_watchdog.sh"
 require_file "etc/sip_media.conf.default"
+require_file "etc/wibox-release"
 require_file "run.sh"
 require_file "lib/libap.so"
 require_file "lib/libadi.so"
@@ -71,6 +72,12 @@ if ! grep -q "^video_enabled=1" "${ROOT}/etc/sip_media.conf.default"; then
   echo "[!] default config does not enable video by default" >&2
   exit 9
 fi
+for key in WIBOX_VERSION WIBOX_COMMIT WIBOX_BUILD_TIMESTAMP; do
+  if ! grep -q "^${key}=." "${ROOT}/etc/wibox-release"; then
+    echo "[!] ${ROOT}/etc/wibox-release missing ${key}" >&2
+    exit 10
+  fi
+done
 
 require_absent "bin/listener*.sh"
 require_absent "bin/mqtt_*.sh"

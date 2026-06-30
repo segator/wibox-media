@@ -18,6 +18,16 @@
 
 #define MQTT_FILE "mqtt"
 
+#ifndef WIBOX_VERSION
+#define WIBOX_VERSION "dev-unknown"
+#endif
+#ifndef WIBOX_COMMIT
+#define WIBOX_COMMIT "unknown"
+#endif
+#ifndef WIBOX_BUILD_TIMESTAMP
+#define WIBOX_BUILD_TIMESTAMP "unknown"
+#endif
+
 typedef struct {
     int enabled;
     char host[128];
@@ -517,6 +527,10 @@ void mqtt_publish_discovery(void) {
     publish_binary_sensor_config("sip_call_active", "SIP Call Active", "sip/active", "");
     publish_binary_sensor_config("video_active", "Video Active", "video/active", "");
     publish_sensor_config("media_state", "Media State", "media/state", "", "phone");
+    publish_sensor_config("firmware_version", "Firmware Version", "firmware/version", "", "tag");
+    publish_sensor_config("firmware_commit", "Firmware Commit", "firmware/commit", "", "source-commit");
+    publish_sensor_config("firmware_build_timestamp", "Firmware Build Timestamp",
+                          "firmware/build_timestamp", "timestamp", "clock-outline");
     publish_sensor_config("last_ring", "Last Ring", "ringing/last", "timestamp", "history");
     publish_sensor_config("last_unlock", "Last Unlock", "door/last_unlock", "timestamp", "lock-open");
     publish_sensor_config("wifi_rssi", "WiFi RSSI", "wifi/rssi", "signal_strength", "wifi");
@@ -555,6 +569,12 @@ void mqtt_publish_video_enabled(int enabled) {
 
 void mqtt_publish_media_state(const char* state) {
     publish_suffix("media/state", state ? state : "unknown", 1);
+}
+
+void mqtt_publish_firmware_version(void) {
+    publish_suffix("firmware/version", WIBOX_VERSION, 1);
+    publish_suffix("firmware/commit", WIBOX_COMMIT, 1);
+    publish_suffix("firmware/build_timestamp", WIBOX_BUILD_TIMESTAMP, 1);
 }
 
 void mqtt_publish_last_ring(void) {
@@ -759,6 +779,7 @@ static void* mqtt_thread_func(void* arg) {
         mqtt_publish_sip_call_active(0);
         mqtt_publish_video_active(0);
         mqtt_publish_media_state("idle");
+        mqtt_publish_firmware_version();
         mqtt_publish_video_enabled(mqtt_state.video_enabled);
         mqtt_publish_wifi_stats();
 

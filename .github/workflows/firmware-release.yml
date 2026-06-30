@@ -1,6 +1,9 @@
 name: Firmware Image
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
     inputs:
       tag:
@@ -8,9 +11,9 @@ on:
         required: false
         type: string
       upload_to_release:
-        description: "Upload image to the GitHub Release"
+        description: "Upload image to the GitHub Release named by tag"
         required: true
-        default: true
+        default: false
         type: boolean
   release:
     types: [published]
@@ -54,10 +57,44 @@ jobs:
             --build-arg BASE_IMAGE="${WIBOX_BUILD_IMAGE}" \
             -t wibox-build-tool:latest .
 
+      - name: Resolve build metadata
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          timestamp=$(date -u +%Y%m%d%H%M%S)
+          iso_timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
+            version="${GITHUB_REF_NAME#wibox-media-}"
+            artifact_tag="${GITHUB_REF_NAME}"
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag }}" ]; then
+            version="${{ inputs.tag }}"
+            version="${version#wibox-media-}"
+            artifact_tag="${{ inputs.tag }}"
+          else
+            version="dev-${timestamp}"
+            artifact_tag="${version}"
+          fi
+          safe_tag=$(printf "%s" "${artifact_tag#wibox-media-}" | tr -c 'A-Za-z0-9._-' '-')
+          {
+            echo "version=${version}"
+            echo "commit=${GITHUB_SHA::12}"
+            echo "build_timestamp=${iso_timestamp}"
+            echo "artifact_tag=${artifact_tag}"
+            echo "safe_tag=${safe_tag}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Build and verify firmware
+        env:
+          WIBOX_VERSION: ${{ steps.metadata.outputs.version }}
+          WIBOX_COMMIT: ${{ steps.metadata.outputs.commit }}
+          WIBOX_BUILD_TIMESTAMP: ${{ steps.metadata.outputs.build_timestamp }}
         run: |
           make test
-          make build
+          WIBOX_VERSION="${WIBOX_VERSION}" \
+            WIBOX_COMMIT="${WIBOX_COMMIT}" \
+            WIBOX_BUILD_TIMESTAMP="${WIBOX_BUILD_TIMESTAMP}" \
+            make build
           make verify-image
 
       - name: Package firmware artifact
@@ -65,23 +102,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
-            tag="${GITHUB_REF_NAME}"
-          else
-            tag="${{ inputs.tag }}"
-          fi
-          if [ -z "${tag}" ]; then
-            tag="manual-${GITHUB_RUN_NUMBER}"
-          fi
-          version="${tag#wibox-media-}"
-          safe_version=$(printf "%s" "${version}" | tr -c 'A-Za-z0-9._-' '-')
-          image="wibox-media-${safe_version}.img"
+          tag="${{ steps.metadata.outputs.artifact_tag }}"
+          image="wibox-media-${{ steps.metadata.outputs.safe_tag }}.img"
           cp -L release/latest "${image}"
           sha256sum "${image}" > SHA256SUMS
           md5sum "${image}" > MD5SUMS
           {
             echo "tag=${tag}"
-            echo "safe_tag=${safe_version}"
+            echo "safe_tag=${{ steps.metadata.outputs.safe_tag }}"
             echo "image=${image}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -96,7 +124,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload image to GitHub Release
-        if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release) }}
+        if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release && inputs.tag != '') }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.package.outputs.tag }}

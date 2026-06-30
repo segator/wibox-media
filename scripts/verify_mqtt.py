@@ -188,6 +188,9 @@ def main():
     topics = [
         MQTT_BASE_TOPIC,
         f"{MQTT_BASE_TOPIC}/media/state",
+        f"{MQTT_BASE_TOPIC}/firmware/version",
+        f"{MQTT_BASE_TOPIC}/firmware/commit",
+        f"{MQTT_BASE_TOPIC}/firmware/build_timestamp",
         f"{MQTT_BASE_TOPIC}/wifi/rssi",
         f"{MQTT_BASE_TOPIC}/video/enabled",
         f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_ringing/config",
@@ -196,6 +199,9 @@ def main():
         f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_video_active/config",
         f"{MQTT_HA_PREFIX}/button/{HA_ID}_open_door/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_media_state/config",
+        f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_version/config",
+        f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_commit/config",
+        f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_build_timestamp/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_last_ring/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_last_unlock/config",
         f"{MQTT_HA_PREFIX}/switch/{HA_ID}_video_enabled/config",
@@ -212,6 +218,9 @@ def main():
 
     assert_present(seen, MQTT_BASE_TOPIC)
     media_state = assert_present(seen, f"{MQTT_BASE_TOPIC}/media/state")
+    firmware_version = assert_present(seen, f"{MQTT_BASE_TOPIC}/firmware/version")
+    firmware_commit = assert_present(seen, f"{MQTT_BASE_TOPIC}/firmware/commit")
+    firmware_build_timestamp = assert_present(seen, f"{MQTT_BASE_TOPIC}/firmware/build_timestamp")
     wifi_rssi = assert_present(seen, f"{MQTT_BASE_TOPIC}/wifi/rssi")
     video_enabled = assert_present(seen, f"{MQTT_BASE_TOPIC}/video/enabled")
 
@@ -224,6 +233,12 @@ def main():
                           expected_icon="mdi:door-open")
     assert_config(seen, "sensor", "media_state", f"{MQTT_BASE_TOPIC}/media/state",
                   no_device_class=True, expected_icon="mdi:phone")
+    assert_config(seen, "sensor", "firmware_version", f"{MQTT_BASE_TOPIC}/firmware/version",
+                  no_device_class=True, expected_icon="mdi:tag")
+    assert_config(seen, "sensor", "firmware_commit", f"{MQTT_BASE_TOPIC}/firmware/commit",
+                  no_device_class=True, expected_icon="mdi:source-commit")
+    assert_config(seen, "sensor", "firmware_build_timestamp", f"{MQTT_BASE_TOPIC}/firmware/build_timestamp",
+                  expected_device_class="timestamp", expected_icon="mdi:clock-outline")
     assert_config(seen, "sensor", "last_ring", f"{MQTT_BASE_TOPIC}/ringing/last",
                   expected_device_class="timestamp", expected_icon="mdi:history")
     assert_config(seen, "sensor", "last_unlock", f"{MQTT_BASE_TOPIC}/door/last_unlock",
@@ -234,7 +249,9 @@ def main():
                   expected_device_class="signal_strength", expected_icon="mdi:wifi")
 
     print(f"[*] MQTT discovery/state OK for {MQTT_BASE_TOPIC}")
-    print(f"    media/state={media_state} wifi/rssi={wifi_rssi} video/enabled={video_enabled}")
+    print(f"    media/state={media_state} firmware/version={firmware_version} "
+          f"firmware/commit={firmware_commit} firmware/build_timestamp={firmware_build_timestamp} "
+          f"wifi/rssi={wifi_rssi} video/enabled={video_enabled}")
 
 
 if __name__ == "__main__":

@@ -104,6 +104,9 @@ def main():
         "-Wextra",
         "-std=gnu99",
         "-pthread",
+        '-DWIBOX_VERSION="test-version"',
+        '-DWIBOX_COMMIT="test-commit"',
+        '-DWIBOX_BUILD_TIMESTAMP="2026-06-30T09:30:00Z"',
         "-Isrc/sip_media",
         "tests/mqtt_native_harness.c",
         "src/sip_media/mqtt.c",
@@ -130,6 +133,24 @@ def main():
         return 1
     if ("wibox/test", "online") not in published:
         print("missing retained online publish", file=sys.stderr)
+        return 1
+    if ("wibox/test/firmware/version", "test-version") not in published:
+        print("missing retained firmware version publish", file=sys.stderr)
+        return 1
+    if ("wibox/test/firmware/commit", "test-commit") not in published:
+        print("missing retained firmware commit publish", file=sys.stderr)
+        return 1
+    if ("wibox/test/firmware/build_timestamp", "2026-06-30T09:30:00Z") not in published:
+        print("missing retained firmware build timestamp publish", file=sys.stderr)
+        return 1
+    if not any(topic.endswith("_firmware_version/config") for topic, _ in published):
+        print("missing firmware version Home Assistant discovery publish", file=sys.stderr)
+        return 1
+    if not any(topic.endswith("_firmware_commit/config") for topic, _ in published):
+        print("missing firmware commit Home Assistant discovery publish", file=sys.stderr)
+        return 1
+    if not any(topic.endswith("_firmware_build_timestamp/config") for topic, _ in published):
+        print("missing firmware build timestamp Home Assistant discovery publish", file=sys.stderr)
         return 1
     return 0
 

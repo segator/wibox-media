@@ -55,6 +55,12 @@ SOURCES = sip_media.c sip_calling.c intercom.c config.c mqtt.c audio_hw.c video_
 ################################################################################
 
 CCFLAGS_USER = -O2 -DDEBUG -g -std=gnu99
+WIBOX_VERSION ?= dev-unknown
+WIBOX_COMMIT ?= unknown
+WIBOX_BUILD_TIMESTAMP ?= unknown
+CCFLAGS_USER += -DWIBOX_VERSION=\"$(WIBOX_VERSION)\"
+CCFLAGS_USER += -DWIBOX_COMMIT=\"$(WIBOX_COMMIT)\"
+CCFLAGS_USER += -DWIBOX_BUILD_TIMESTAMP=\"$(WIBOX_BUILD_TIMESTAMP)\"
 CCFLAGS_USER += -I$(PJSIP_DIR)/pjsip/include
 CCFLAGS_USER += -I$(PJSIP_DIR)/pjlib/include
 CCFLAGS_USER += -I$(PJSIP_DIR)/pjlib-util/include

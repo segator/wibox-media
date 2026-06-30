@@ -22,6 +22,7 @@ void mqtt_publish_sip_call_active(int active);
 void mqtt_publish_video_active(int active);
 void mqtt_publish_video_enabled(int enabled);
 void mqtt_publish_media_state(const char* state);
+void mqtt_publish_firmware_version(void);
 void mqtt_publish_last_ring(void);
 void mqtt_publish_last_unlock(void);
 void mqtt_publish_wifi_stats(void);

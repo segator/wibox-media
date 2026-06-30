@@ -456,6 +456,9 @@ binary_sensor.call_active
 binary_sensor.sip_call_active
 binary_sensor.video_active
 sensor.media_state
+sensor.firmware_version
+sensor.firmware_commit
+sensor.firmware_build_timestamp
 sensor.last_ring
 sensor.last_unlock
 sensor.wifi_rssi
@@ -470,6 +473,34 @@ wibox/<device>/door/open/set = PRESS
 
 Home Assistant should not need to orchestrate `START_CALL`, unlock and
 `STOP_CALL`; the daemon handles that sequence.
+
+## Firmware Metadata
+
+Every image includes build metadata in:
+
+```text
+/etc/wibox-release
+```
+
+On the WiBox:
+
+```sh
+cat /etc/wibox-release
+```
+
+Example:
+
+```text
+WIBOX_VERSION=v0.2.0
+WIBOX_COMMIT=e2c2cd9a12ab
+WIBOX_BUILD_TIMESTAMP=2026-06-30T09:30:00Z
+```
+
+Release builds use the GitHub release version. Development builds use:
+
+```text
+dev-YYYYmmddHHMMSS
+```
 
 ## LEDs
 
@@ -491,9 +522,12 @@ verification.
 GitHub Actions is intentionally small:
 
 - `CI` runs the host MQTT regression test on pushes and pull requests.
+- `Firmware Image` runs on pushes to `main`, pull requests, manual dispatches
+  and releases. It builds the final image, verifies it, and uploads a workflow
+  artifact every time.
 - `Release Please` manages changelog and GitHub release PRs.
-- `Firmware Image` builds the final cramfs image for a published release or a
-  manual workflow run.
+- On published releases, `Firmware Image` also attaches the `.img` and checksum
+  files to the GitHub Release.
 
 The firmware image workflow builds from the committed `mtd4` backup and
 `third_party/gk710x-sdk-min`.
