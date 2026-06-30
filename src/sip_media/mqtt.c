@@ -37,6 +37,7 @@ typedef struct {
     char base_topic[128];
     char device_id[128];
     char device_name[128];
+    char timestamp_offset[8];
     char local_ip[64];
     int video_enabled;
     mqtt_callbacks_t callbacks;
@@ -392,9 +393,30 @@ static void publish_suffix(const char* suffix, const char* payload, int retain) 
 static void iso_now(char* out, size_t out_size) {
     time_t now = time(NULL);
     struct tm tm_value;
+    const char *offset = mqtt_state.timestamp_offset[0] ?
+                         mqtt_state.timestamp_offset : "+00:00";
+    char wall_time[32];
 
+    /*
+     * The GK7102S firmware stores wall-clock time without a reliable timezone.
+     * Treat time(NULL) as the displayed wall time and append the configured
+     * offset so Home Assistant can convert it correctly.
+     */
     gmtime_r(&now, &tm_value);
-    strftime(out, out_size, "%Y-%m-%dT%H:%M:%SZ", &tm_value);
+    strftime(wall_time, sizeof(wall_time), "%Y-%m-%dT%H:%M:%S", &tm_value);
+    if (strcmp(offset, "Z") == 0 || strcmp(offset, "z") == 0) {
+        snprintf(out, out_size, "%sZ", wall_time);
+    } else if ((offset[0] == '+' || offset[0] == '-') &&
+               isdigit((unsigned char)offset[1]) &&
+               isdigit((unsigned char)offset[2]) &&
+               offset[3] == ':' &&
+               isdigit((unsigned char)offset[4]) &&
+               isdigit((unsigned char)offset[5]) &&
+               offset[6] == '\0') {
+        snprintf(out, out_size, "%s%s", wall_time, offset);
+    } else {
+        snprintf(out, out_size, "%s+00:00", wall_time);
+    }
 }
 
 static void unique_id(char* out, size_t out_size, const char* suffix) {
@@ -830,6 +852,7 @@ int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
     strncpy(mqtt_state.user, app_config->mqtt_user, sizeof(mqtt_state.user) - 1);
     strncpy(mqtt_state.pass, app_config->mqtt_pass, sizeof(mqtt_state.pass) - 1);
     strncpy(mqtt_state.ha_prefix, app_config->mqtt_homeassistant_prefix, sizeof(mqtt_state.ha_prefix) - 1);
+    strncpy(mqtt_state.timestamp_offset, app_config->mqtt_timestamp_offset, sizeof(mqtt_state.timestamp_offset) - 1);
     strncpy(mqtt_state.local_ip, local_ip ? local_ip : "0.0.0.0", sizeof(mqtt_state.local_ip) - 1);
     mqtt_state.video_enabled = app_config->video_enabled;
 

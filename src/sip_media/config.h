@@ -31,6 +31,7 @@ typedef struct {
     char mqtt_base_topic[128];
     char mqtt_device_id[128];
     char mqtt_device_name[128];
+    char mqtt_timestamp_offset[8];
 
     // Prometheus metrics exporter
     int prometheus_enabled;
