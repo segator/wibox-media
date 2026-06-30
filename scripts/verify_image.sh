@@ -59,15 +59,6 @@ if [ "${LOCAL_MD5}" != "${IMAGE_MD5}" ]; then
   exit 4
 fi
 
-if [ ! -L "${ROOT}/bin/sip_media" ]; then
-  echo "[!] bin/sip_media compatibility symlink is missing" >&2
-  exit 5
-fi
-if [ "$(readlink "${ROOT}/bin/sip_media")" != "wibox-media-daemon" ]; then
-  echo "[!] bin/sip_media symlink points to $(readlink "${ROOT}/bin/sip_media")" >&2
-  exit 6
-fi
-
 if ! grep -q "wibox-media-daemon" "${ROOT}/run.sh"; then
   echo "[!] run.sh does not start wibox-media-daemon" >&2
   exit 7
@@ -87,6 +78,8 @@ require_absent "bin/heartbeat_mqtt.sh"
 require_absent "bin/mosquitto_*"
 require_absent "bin/audio_bridge"
 require_absent "bin/video_rtp_bridge"
+require_absent "bin/sip_media"
+require_absent "bin/sofia_trace"
 
 echo "[*] Firmware image OK: ${IMAGE}"
 echo "    daemon_md5=${IMAGE_MD5}"

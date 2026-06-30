@@ -6,10 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && cd /tmp/ct && make LDFLAGS="-static" \
     && rm -rf /var/lib/apt/lists/*
 
-# Stage 2: Production image with crosstool + cramfs tools
-FROM ghcr.io/duhow/wibox-crosstool:latest
+# Stage 2: Production build image: ARM toolchain, PJProject and cramfs tools.
+FROM wibox-build:latest
 COPY --from=builder /tmp/ct/mkcramfs /tmp/ct/cramfsck /usr/local/bin/
+ENV PATH="/opt/4.6.1/usr/bin:${PATH}"
 RUN chmod +x /usr/local/bin/mkcramfs /usr/local/bin/cramfsck \
-    && apt-get update && apt-get install -y --no-install-recommends rsync wget bzip2 \
+    && apt-get update && apt-get install -y --no-install-recommends rsync wget bzip2 sshpass \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build

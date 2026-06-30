@@ -6,8 +6,8 @@ the one-time Sofia boot warmup.
 ## Components
 
 - `src/sip_media/`: current source directory for `wibox-media-daemon`, the
-  SIP/RTP media app. It still uses the historical directory name during the
-  migration.
+  SIP/RTP media app. The directory keeps its historical name, but the packaged
+  runtime binary is only `wibox-media-daemon`.
 - `src/sip_media/audio_hw.c`: direct GADI audio hardware module. SIP RTP
   threads read A-law frames from AI and send remote RTP payloads to AO without
   named pipes.
@@ -33,7 +33,8 @@ wibox-media-daemon  <-> MQTT/Home Assistant over native MQTT 3.1.1 TCP client
 
 1. Sofia warms up the video hardware once after boot.
 2. Sofia exits.
-3. `wibox-media-daemon` runs under `app_watchdog.sh`.
+3. `wibox-media-daemon` runs under `app_watchdog.sh`, which restarts it if it
+   exits and rotates `/var/log/wibox-media-daemon.log`.
 4. Doorbell `ALARM_REPORT` is read directly from `/dev/ttySGK1` by
    `wibox-media-daemon`. The legacy `/tmp/pipe_sip` `DING` trigger remains for
    manual testing.

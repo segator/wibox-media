@@ -34,9 +34,6 @@ if command -v dropbear >/dev/null; then
   fi
 fi
 
-# ── factory mode: run original Sofia with IOCTL tracer ──
-[ -f "/mnt/mtd/factory" ] && ( /usr/run-orig.sh; exit )
-
 for DIR in lock run fat32_0 cloud wifi; do
   mkdir -p /var/$DIR
 done
@@ -129,13 +126,11 @@ echo "IDS7938${UDID:8:4}" > /proc/sys/kernel/hostname
 if [ ! -f "/mnt/mtd/sip_media.conf" ] && [ -f "/etc/sip_media.conf.default" ]; then
   cp /etc/sip_media.conf.default /mnt/mtd/sip_media.conf
 fi
-if [ -x "/usr/bin/wibox-media-daemon" ]; then
-  /usr/bin/app_watchdog.sh wibox-media-daemon /usr/bin/wibox-media-daemon &
-elif [ -x "/usr/bin/sip_media" ]; then
-  /usr/bin/app_watchdog.sh sip_media /usr/bin/sip_media &
+if [ ! -x "/usr/bin/wibox-media-daemon" ]; then
+  echo "wibox-media-daemon missing"
+  exit 1
 fi
-
-[ -f "/mnt/mtd/post.sh" ] && /mnt/mtd/post.sh
+/usr/bin/app_watchdog.sh wibox-media-daemon /usr/bin/wibox-media-daemon &
 
 # remove lock if present
 rm -f /tmp/heartbeat.lock

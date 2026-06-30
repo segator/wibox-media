@@ -43,7 +43,8 @@ wibox-media-daemon <--> MQTT/Home Assistant
 
 - `Sofia_temp.sh` is still required once per boot as a hardware warmup.
 - Video still runs in a daemon-forked child for GADI/ioctl crash containment.
-- `/mnt/mtd/sip_media.conf` keeps the historical name for compatibility.
+- `/mnt/mtd/sip_media.conf` keeps the historical config filename, but the only
+  packaged runtime binary is `wibox-media-daemon`.
 - Persistent flashing is intentionally guarded; the current WiBox runtime can
   be tested from `/tmp` before writing `mtd4`.
 
@@ -167,14 +168,12 @@ Evidence:
 Goal:
 - Rename/evolve `sip_media` into `wibox-media-daemon` as the owner of media and
   intercom state.
-- Keep compatibility symlinks or wrapper names only as needed during migration.
-- Do not remove `listener.sh` yet.
+- Remove compatibility binaries and wrappers from the production image.
 
 Implementation:
 - Build `src/sip_media` as `wibox-media-daemon`.
-- Keep `sip_media` as a compatibility symlink during migration.
-- Keep the existing `/mnt/mtd/sip_media.conf` config name until the daemon
-  owns all subsystems.
+- Keep the existing `/mnt/mtd/sip_media.conf` config name for persistent
+  upgrade compatibility.
 
 Verification:
 - Build succeeds.
@@ -202,7 +201,7 @@ Implementation:
 - `/tmp/pipe_sip` also accepts `UART FB 11 00 1C` style injected frames as a
   local test API.
 - `HANG_UP` and `CMD_STOP_RING` terminate an active SIP call.
-- `run.sh` starts `listener.sh` only for legacy `sip_media` fallback installs.
+- `run.sh` starts only `wibox-media-daemon` under `app_watchdog.sh`.
 - MQTT/Home Assistant publication remains in Phase 3.
 
 Verification:

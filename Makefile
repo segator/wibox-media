@@ -21,7 +21,7 @@ build: build-media
 	docker run --rm -v $(PWD):/build $(IMAGE) make build-inside
 
 build-media:
-	./build-wibox-media-daemon.sh
+	BUILD_IMAGE=$(IMAGE) scripts/build_wibox_media_daemon.sh
 	rm -f src/sip_media/sip_media src/sip_media/wibox-media-daemon src/sip_media/*.o
 	rm -f src/video_rtp_bridge/video_rtp_bridge
 

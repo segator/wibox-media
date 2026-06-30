@@ -34,10 +34,10 @@ fi
 
 if [ -n "${IS_TEMP}" ]; then
   timeout -t 35 /usr/bin/system_sofia &
-  /usr/bin/sofia_trace /var/Sofia
+  timeout -t 35 /var/Sofia
 else
   /usr/bin/system_sofia &
-  /usr/bin/sofia_trace /var/Sofia
+  /var/Sofia
 fi
 rmmod goke_wdt
 rm -f /var/Sofia

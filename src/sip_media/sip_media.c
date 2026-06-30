@@ -987,8 +987,8 @@ static void handle_uart_frame(const unsigned char frame[4]) {
         terminate_call_from_serial(def->name);
         break;
     case UART_CODE_CMD_RESET:
-        PJ_LOG(2,(THIS_FILE, "Factory reset command received from panel"));
-        system("touch /mnt/mtd/factory && sync && reboot");
+        PJ_LOG(2,(THIS_FILE, "Reset command received from panel"));
+        system("sync && reboot");
         break;
     case UART_CODE_START_CALL:
         PJ_LOG(3,(THIS_FILE, "Intercom call line is active"));

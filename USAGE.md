@@ -1,74 +1,73 @@
-# Using Wibox patch
+# WiBox Media Usage
 
-This firmware replaces the old web/script control path with
-`wibox-media-daemon`, exposed primarily through SIP and MQTT/Home Assistant.
-
-## MQTT / Home Assistant
-
-MQTT/Home Assistant is handled directly by `wibox-media-daemon` using plain
-MQTT on port 1883.
-
-![](./docs/img/homeassistant.png)
-
-Configure MQTT in `/mnt/mtd/sip_media.conf`:
+## Build Image
 
 ```bash
+make docker
+make build
+make verify
+```
+
+The final image is `release/latest`. Both daemon compilation and cramfs packing
+run inside `wibox-build-tool:latest`.
+
+## Configure Device
+
+Persistent runtime config:
+
+```text
+/mnt/mtd/sip_media.conf
+```
+
+Minimal MQTT/Home Assistant example:
+
+```ini
 mqtt_enabled=1
 mqtt_host=192.168.10.2
 mqtt_user=mqtt
 mqtt_pass=password
 ```
 
-## Build and deploy
+Video is enabled by default:
 
-Build host tests, the daemon, and the cramfs image:
-
-```bash
-make test
-make build
+```ini
+video_enabled=1
 ```
 
-For a non-persistent runtime test, upload the daemon to `/tmp` and restart it:
+Set it to `0` for installations without video intercom support.
+
+## Runtime Test Without Flashing
 
 ```bash
 make deploy-runtime
-make verify
+make verify-device
 ```
 
-`deploy-runtime` verifies the active daemon checksum and MQTT/Home Assistant
-state after restart. `verify` also runs host tests and checks `release/latest`.
-To verify MQTT manually:
+This uploads `wibox-media-daemon` to `/tmp`, restarts it, verifies its checksum
+and checks MQTT discovery/state.
 
-```bash
-MQTT_HOST=192.168.10.2 MQTT_USER=mqtt MQTT_PASS=password make verify-mqtt
-```
-
-To persist the image to `/usr` (`mtd4`), use the guarded flash target:
+## Flash
 
 ```bash
 make flash-dry-run
 make backup-mtd4
 make flash CONFIRM_FLASH=YES
+reboot
 ```
 
-`flash-dry-run` verifies or uploads `/tmp/update.img` and stops before writing
-mtd4. `flash` runs `backup-mtd4` automatically before writing.
+`flash` runs `backup-mtd4` automatically before writing. Backups are stored in
+`backups/` and are intentionally ignored by git.
 
-## Keep application working
+## Local Test API
 
-If you want to keep using Sofia original application,
-you can tweak `post-run` script in order to boot it.
-
-Beware that enabling Sofia will disable this patched application to work,
-so controls will only work with original Wibox application.
-
-Create file `/mnt/mtd/factory` (`touch`) to disable patch boot.
-
-You can also update or create `/mnt/mtd/post.sh` with **executable permissions** and write:
+The daemon creates `/tmp/pipe_sip`:
 
 ```bash
-#!/bin/sh
-
-# run factory program
-/usr/run-orig.sh
+echo DING > /tmp/pipe_sip
+echo 'UART FB 11 00 1C' > /tmp/pipe_sip
+echo 'AUDIO_TEST 192.168.0.183 4012 5' > /tmp/pipe_sip
+echo 'VIDEO_TEST 192.168.0.183 4014 5' > /tmp/pipe_sip
 ```
+
+`UART ...` injects an intercom frame, which is useful when the physical portal
+button is not reachable.
