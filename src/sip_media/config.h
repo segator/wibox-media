@@ -11,7 +11,6 @@ typedef struct {
     int video_enabled;
     int video_rtp_port;
     int video_payload_type;
-    char video_bridge_path[256];
 
     // Pipe Configuration
     char sip_listen_pipe[256];

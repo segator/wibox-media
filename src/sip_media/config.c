@@ -36,7 +36,6 @@ void config_init_defaults(wibox_config_t* config) {
     config->video_enabled = 1;
     config->video_rtp_port = 8002;
     config->video_payload_type = 96;
-    config->video_bridge_path[0] = '\0';
 
     // Pipe Configuration
     strcpy(config->sip_listen_pipe, "/tmp/pipe_sip");
@@ -114,8 +113,7 @@ static int parse_config_line(const char* line, wibox_config_t* config) {
     } else if (strcmp(key, "video_payload_type") == 0) {
         config->video_payload_type = atoi(value);
     } else if (strcmp(key, "video_bridge_path") == 0) {
-        strncpy(config->video_bridge_path, value, sizeof(config->video_bridge_path) - 1);
-        config->video_bridge_path[sizeof(config->video_bridge_path) - 1] = '\0';
+        return 0; /* legacy standalone video bridge config, ignored */
     } else if (strcmp(key, "audio_ai_pipe") == 0) {
         return 0; /* legacy named-pipe config, ignored */
     } else if (strcmp(key, "audio_ao_pipe") == 0) {
@@ -234,7 +232,6 @@ void config_print(const wibox_config_t* config) {
     printf("video_enabled = %d\n", config->video_enabled);
     printf("video_rtp_port = %d\n", config->video_rtp_port);
     printf("video_payload_type = %d\n", config->video_payload_type);
-    printf("video_bridge_path = %s\n", config->video_bridge_path);
     printf("sip_listen_pipe = %s\n", config->sip_listen_pipe);
     printf("ding_message = %s\n", config->ding_message);
     printf("serial_listener_enabled = %d\n", config->serial_listener_enabled);
