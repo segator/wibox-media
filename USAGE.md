@@ -50,6 +50,9 @@ make flash-dry-run
 make flash CONFIRM_FLASH=YES
 ```
 
+`flash-dry-run` verifies or uploads `/tmp/update.img` and stops before writing
+mtd4.
+
 ## Keep application working
 
 If you want to keep using Sofia original application,

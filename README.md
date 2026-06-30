@@ -72,9 +72,9 @@ make deploy-runtime WIBOX_IP=192.168.0.196 WIBOX_USER=root WIBOX_PASS=qv2008
 
 ### Normal flash (WiFi/SSH working)
 
-Use the guarded Make target. It uploads `release/latest` to `/tmp/update.img`,
-checks the local and remote hashes, confirms `mtd4` is the `/usr` partition, then
-runs `/usr/bin/update_firmware.sh` on the device.
+Use the guarded Make target. It verifies or uploads `release/latest` as
+`/tmp/update.img`, checks the local and remote hashes, confirms `mtd4` is the
+`/usr` partition, then runs `/usr/bin/update_firmware.sh` on the device.
 
 ```bash
 make flash-dry-run
@@ -82,9 +82,10 @@ make flash CONFIRM_FLASH=YES
 reboot
 ```
 
-`make flash-dry-run` performs the upload and all non-destructive checks, then
-stops before writing mtd4. Do not use raw `dd` for normal updates; the updater
-verifies the written image.
+`make flash-dry-run` performs all non-destructive checks and skips the upload
+when `/tmp/update.img` already matches `release/latest`, then stops before
+writing mtd4. Do not use raw `dd` for normal updates; the updater verifies the
+written image.
 
 ### Recovery flash (U-Boot via serial YMODEM)
 

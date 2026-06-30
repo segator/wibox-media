@@ -38,12 +38,17 @@ if ! mount | grep -q "/dev/mtdblock4 on /usr type cramfs"; then
 fi
 '
 
-echo "[*] Uploading firmware to /tmp/update.img"
-base64 "${IMAGE}" | sshpass -p "${WIBOX_PASS}" ssh ${SSH_OPTS} "${WIBOX_USER}@${WIBOX_IP}" '
+REMOTE_MD5=$(sshpass -p "${WIBOX_PASS}" ssh ${SSH_OPTS} "${WIBOX_USER}@${WIBOX_IP}" "md5sum /tmp/update.img 2>/dev/null | cut -d' ' -f1" || true)
+if [ "${REMOTE_MD5}" = "${LOCAL_MD5}" ]; then
+  echo "[*] /tmp/update.img already matches local firmware"
+else
+  echo "[*] Uploading firmware to /tmp/update.img"
+  base64 "${IMAGE}" | sshpass -p "${WIBOX_PASS}" ssh ${SSH_OPTS} "${WIBOX_USER}@${WIBOX_IP}" '
 set -eu
 base64 -d > /tmp/update.img
 md5sum /tmp/update.img
 '
+fi
 
 REMOTE_MD5=$(sshpass -p "${WIBOX_PASS}" ssh ${SSH_OPTS} "${WIBOX_USER}@${WIBOX_IP}" "md5sum /tmp/update.img | cut -d' ' -f1")
 if [ "${REMOTE_MD5}" != "${LOCAL_MD5}" ]; then
@@ -52,7 +57,7 @@ if [ "${REMOTE_MD5}" != "${LOCAL_MD5}" ]; then
 fi
 
 if [ "${FLASH_DRY_RUN}" = "1" ]; then
-  echo "[*] Dry run complete; /tmp/update.img is uploaded and verified, mtd4 was not written."
+  echo "[*] Dry run complete; /tmp/update.img is verified, mtd4 was not written."
   exit 0
 fi
 
