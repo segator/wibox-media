@@ -393,8 +393,8 @@ static void iso_now(char* out, size_t out_size) {
     time_t now = time(NULL);
     struct tm tm_value;
 
-    localtime_r(&now, &tm_value);
-    strftime(out, out_size, "%Y-%m-%dT%H:%M:%S%z", &tm_value);
+    gmtime_r(&now, &tm_value);
+    strftime(out, out_size, "%Y-%m-%dT%H:%M:%SZ", &tm_value);
 }
 
 static void unique_id(char* out, size_t out_size, const char* suffix) {
@@ -420,7 +420,8 @@ static void discovery_topic(char* out, size_t out_size,
 
 static void publish_binary_sensor_config(const char* object_id, const char* name,
                                          const char* state_suffix,
-                                         const char* device_class) {
+                                         const char* device_class,
+                                         int enabled_by_default) {
     char topic[256];
     char state_topic[256];
     char uid[192];
@@ -440,8 +441,9 @@ static void publish_binary_sensor_config(const char* object_id, const char* name
     snprintf(payload, sizeof(payload),
              "{\"name\":\"%s\",\"unique_id\":\"%s\",\"state_topic\":\"%s\","
              "\"availability_topic\":\"%s\",\"payload_on\":\"ON\","
-             "\"payload_off\":\"OFF\",%s%s}",
-             name, uid, state_topic, mqtt_state.base_topic, class_part, dev);
+             "\"payload_off\":\"OFF\",\"enabled_by_default\":%s,%s%s}",
+             name, uid, state_topic, mqtt_state.base_topic,
+             enabled_by_default ? "true" : "false", class_part, dev);
     mqtt_publish_raw(topic, payload, 1);
 }
 
@@ -522,10 +524,10 @@ void mqtt_publish_discovery(void) {
     if (!mqtt_state.enabled || !mqtt_state.connected) return;
 
     publish_button_config();
-    publish_binary_sensor_config("ringing", "Ringing", "ringing", "occupancy");
-    publish_binary_sensor_config("call_active", "Call Active", "call/active", "");
-    publish_binary_sensor_config("sip_call_active", "SIP Call Active", "sip/active", "");
-    publish_binary_sensor_config("video_active", "Video Active", "video/active", "");
+    publish_binary_sensor_config("ringing", "Ringing", "ringing", "occupancy", 1);
+    publish_binary_sensor_config("call_active", "Call Active", "call/active", "", 1);
+    publish_binary_sensor_config("sip_call_active", "SIP Call Active", "sip/active", "", 0);
+    publish_binary_sensor_config("video_active", "Video Active", "video/active", "", 1);
     publish_sensor_config("media_state", "Media State", "media/state", "", "phone");
     publish_sensor_config("firmware_version", "Firmware Version", "firmware/version", "", "tag");
     publish_sensor_config("firmware_commit", "Firmware Commit", "firmware/commit", "", "source-commit");

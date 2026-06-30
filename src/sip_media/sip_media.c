@@ -1315,8 +1315,7 @@ static void* audio_input_handler(void* arg) {
         }
 
         seq_num++;
-        timestamp += 160;
-        usleep(18000);
+        timestamp += (uint32_t)bytes_read;
     }
 
     free(audio_buffer);

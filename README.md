@@ -456,7 +456,6 @@ Main entities:
 button.open_door
 binary_sensor.ringing
 binary_sensor.call_active
-binary_sensor.sip_call_active
 binary_sensor.video_active
 sensor.media_state
 sensor.firmware_version
@@ -467,6 +466,12 @@ sensor.last_unlock
 sensor.wifi_rssi
 switch.video_enabled
 ```
+
+`sensor.last_ring`, `sensor.last_unlock` and
+`sensor.firmware_build_timestamp` are published as UTC ISO-8601 timestamps.
+`binary_sensor.sip_call_active` is still published for diagnostics, but is
+disabled by default in Home Assistant because `binary_sensor.call_active` is the
+normal user-facing call state.
 
 The door command is high-level:
 
