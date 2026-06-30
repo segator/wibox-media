@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.3](https://github.com/segator/wibox-media/compare/wibox-media-v0.4.2...wibox-media-v0.4.3) (2026-06-30)
+
+
+### Bug Fixes
+
+* publish wall-clock event timestamps with offset ([df4040c](https://github.com/segator/wibox-media/commit/df4040c42512d9ecf3cdb5c3ec33b9ce35933c3f))
+* use timezone config for HA event timestamps ([490e5de](https://github.com/segator/wibox-media/commit/490e5de006e7ef5df511707078efabfea148906e))
+
 ## [0.4.2](https://github.com/segator/wibox-media/compare/wibox-media-v0.4.1...wibox-media-v0.4.2) (2026-06-30)
 
 
