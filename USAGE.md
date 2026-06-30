@@ -35,9 +35,9 @@ make deploy-runtime
 make verify
 ```
 
-`verify` runs host tests, checks `release/latest`, verifies the active daemon
-checksum and validates MQTT/Home Assistant state using the WiBox config. To
-verify MQTT manually:
+`deploy-runtime` verifies the active daemon checksum and MQTT/Home Assistant
+state after restart. `verify` also runs host tests and checks `release/latest`.
+To verify MQTT manually:
 
 ```bash
 MQTT_HOST=192.168.10.2 MQTT_USER=mqtt MQTT_PASS=password make verify-mqtt

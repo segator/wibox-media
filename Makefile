@@ -49,6 +49,7 @@ verify-device:
 deploy-runtime: build-media
 	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
 		scripts/deploy_runtime.sh
+	@$(MAKE) verify-device
 
 flash: build
 	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \

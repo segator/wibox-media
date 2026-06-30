@@ -43,9 +43,9 @@ make deploy-runtime
 make verify
 ```
 
-`verify` runs the host regression test, verifies `release/latest` contents,
-checks the active WiBox daemon checksum, and validates retained MQTT
-discovery/state using `/mnt/mtd/sip_media.conf` from the device. You can also
+`deploy-runtime` verifies the active daemon checksum and retained MQTT
+discovery/state after restarting the daemon. `verify` additionally runs the
+host regression test and verifies `release/latest` contents. You can also
 verify retained MQTT discovery and state manually with:
 
 ```bash
