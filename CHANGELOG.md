@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.2](https://github.com/segator/wibox-media/compare/wibox-media-v0.4.1...wibox-media-v0.4.2) (2026-06-30)
+
+
+### Bug Fixes
+
+* cancel unanswered outgoing calls ([528cc42](https://github.com/segator/wibox-media/commit/528cc422c8818217ac0e82c24d36406a76bbc51f))
+* clear call active after mqtt unlock ([af3dd52](https://github.com/segator/wibox-media/commit/af3dd522208ce7f4f520c22396fcab870e4d1b55))
+* improve audio RTP pacing and HA timestamps ([c626807](https://github.com/segator/wibox-media/commit/c6268078fe71a1441ebe3f82c1bd696fc2987881))
+
 ## [0.4.1](https://github.com/segator/wibox-media/compare/wibox-media-v0.4.0...wibox-media-v0.4.1) (2026-06-30)
 
 
