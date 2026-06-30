@@ -273,6 +273,25 @@ static int mqtt_read_packet(unsigned char* type_flags, unsigned char* payload,
     return 0;
 }
 
+static const char* mqtt_connack_reason(int code) {
+    switch (code) {
+    case 0:
+        return "accepted";
+    case 1:
+        return "unacceptable protocol version";
+    case 2:
+        return "identifier rejected";
+    case 3:
+        return "server unavailable";
+    case 4:
+        return "bad username or password";
+    case 5:
+        return "not authorized";
+    default:
+        return "unknown";
+    }
+}
+
 static int mqtt_connect_session(void) {
     unsigned char payload[1024];
     unsigned char response[8];
@@ -319,8 +338,9 @@ static int mqtt_connect_session(void) {
     }
 
     if (type != 0x20 || len < 2 || response[1] != 0) {
-        printf("%s: CONNACK rejected type=0x%02x len=%d code=%d\n",
-               MQTT_FILE, type, len, len >= 2 ? response[1] : -1);
+        int code = len >= 2 ? response[1] : -1;
+        printf("%s: CONNACK rejected type=0x%02x len=%d code=%d (%s)\n",
+               MQTT_FILE, type, len, code, mqtt_connack_reason(code));
         close(mqtt_state.sock);
         mqtt_state.sock = -1;
         return -1;
