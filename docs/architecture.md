@@ -13,7 +13,10 @@ run.sh
   -> app_watchdog.sh wibox-media-daemon
 
 wibox-media-daemon
+  - serial /dev/ttySGK1 state machine
+  - SIP signaling and call lifecycle
   - direct GADI AI/AO audio
+  - native MQTT/Home Assistant client
   -> video worker                  forked per video call
 ```
 
@@ -23,7 +26,7 @@ Data flow:
 /dev/ttySGK1
   ^      ^
   |      |
-  |      +-- sip_media: START_CALL, STOP_CALL, UNLOCK_DOOR
+  |      +-- wibox-media-daemon: START_CALL, STOP_CALL, UNLOCK_DOOR
   |
   +--------- wibox-media-daemon: ALARM_REPORT, call state, MQTT actions
 
@@ -38,17 +41,16 @@ wibox-media-daemon <--> MQTT/Home Assistant
 
 ## Current Problems
 
-- `/dev/ttySGK1` has two owners: `listener.sh` and `sip_media`.
-- MQTT commands expose low-level intercom sequencing instead of one safe
-  operation such as "open door".
-- SIP media, DTMF, serial state and MQTT state live in different runtimes.
-- The web UI is not part of the desired operational path; Home Assistant via
-  MQTT is the UI.
 - `Sofia_temp.sh` is still required once per boot as a hardware warmup.
+- Video still runs in a daemon-forked child for GADI/ioctl crash containment.
+- `/mnt/mtd/sip_media.conf` keeps the historical name for compatibility.
+- Real MQTT/Home Assistant discovery still needs validation against the
+  production broker credentials/ACL.
 
 ## Target Runtime
 
-The target production shape is one main daemon:
+The target production shape is the current daemon model, with the Sofia warmup
+removed once VI/VENC init is fully replicated:
 
 ```text
 run.sh
@@ -65,8 +67,7 @@ wibox-media-daemon
   - doorbell/call/unlock lifecycle
 ```
 
-Temporary workers may stay separate during migration, but the final ownership
-model is a single daemon controlling serial, media and MQTT.
+The daemon owns serial, SIP, audio, video worker lifecycle, DTMF and MQTT.
 
 ## Home Assistant Model
 
@@ -290,8 +291,7 @@ Verification:
   after direct audio integration.
 
 Remaining:
-- Re-run a real MicroSIP call to validate two-way audio, H.264 video and DTMF
-  together on the direct audio build.
+- None. Real MicroSIP call validation passed on the direct audio build.
 
 ### Phase 6: Remove Web UI and Legacy Scripts
 
@@ -313,6 +313,8 @@ Implementation:
 
 Verification:
 - `make build-media` succeeds with the native MQTT client.
+- `make build` produces an image with no web UI, `listener*.sh`,
+  `mqtt_*.sh`, `heartbeat_mqtt.sh` or `mosquitto_*` files.
 - Local MQTT mock test exercises CONNECT, SUBSCRIBE, retained state publish,
   Home Assistant discovery publish, `door/open/set` and `video/enabled/set`.
 

@@ -43,3 +43,4 @@ mkcramfs
 cramfsck
 mtd4.bak
 research/sofia_re/
+.codebase-memory/
