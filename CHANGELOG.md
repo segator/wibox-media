@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/segator/wibox-media/compare/wibox-media-v0.4.0...wibox-media-v0.4.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* package current default media config ([aaf59aa](https://github.com/segator/wibox-media/commit/aaf59aa283ba5b64dc66e7d58e896b5849d6cf8c))
+
 ## [0.4.0](https://github.com/segator/wibox-media/compare/wibox-media-v0.3.1...wibox-media-v0.4.0) (2026-06-30)
 
 
