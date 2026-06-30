@@ -32,11 +32,11 @@ For a non-persistent runtime test, upload the daemon to `/tmp` and restart it:
 
 ```bash
 make deploy-runtime
-make verify-device
+make verify
 ```
 
-`verify-device` checks both the active daemon checksum and MQTT/Home Assistant
-state using the WiBox config. To verify MQTT manually:
+`verify` runs host tests, checks the active daemon checksum and validates
+MQTT/Home Assistant state using the WiBox config. To verify MQTT manually:
 
 ```bash
 MQTT_HOST=192.168.10.2 MQTT_USER=mqtt MQTT_PASS=password make verify-mqtt
