@@ -147,11 +147,53 @@ static void set_call_active_status(pj_bool_t active) {
     pj_mutex_unlock(call_active_mutex);
 }
 
+static int get_interface_ip(const char* ifname, char* ip_str, size_t len) {
+    struct ifaddrs *ifaddrs_ptr = NULL;
+    struct ifaddrs *ifa = NULL;
+    int found = 0;
+
+    if (!ifname || !ip_str || len == 0) {
+        return 0;
+    }
+
+    ip_str[0] = '\0';
+
+    if (getifaddrs(&ifaddrs_ptr) == -1) {
+        return 0;
+    }
+
+    for (ifa = ifaddrs_ptr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET &&
+            strcmp(ifa->ifa_name, ifname) == 0) {
+            struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
+            inet_ntop(AF_INET, &addr->sin_addr, ip_str, len);
+            found = ip_str[0] != '\0';
+            break;
+        }
+    }
+
+    freeifaddrs(ifaddrs_ptr);
+    return found;
+}
+
 static void get_local_ip(char* ip_str, size_t len) {
     struct ifaddrs *ifaddrs_ptr = NULL;
     struct ifaddrs *ifa = NULL;
+    int attempt;
 
-    // Default fallback
+    if (!ip_str || len == 0) {
+        return;
+    }
+
+    // WiBox media always runs over WiFi. During boot, eth0 can have a factory
+    // static address before wlan0 DHCP finishes, so wait briefly for wlan0.
+    for (attempt = 0; attempt < 20; attempt++) {
+        if (get_interface_ip("wlan0", ip_str, len)) {
+            return;
+        }
+        usleep(500000);
+    }
+
     strcpy(ip_str, "127.0.0.1");
 
     if (getifaddrs(&ifaddrs_ptr) == -1) {
@@ -159,22 +201,13 @@ static void get_local_ip(char* ip_str, size_t len) {
     }
 
     for (ifa = ifaddrs_ptr; ifa != NULL; ifa = ifa->ifa_next) {
-        if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET) {
+        if (ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_INET &&
+            strcmp(ifa->ifa_name, "lo") != 0) {
             struct sockaddr_in* addr = (struct sockaddr_in*)ifa->ifa_addr;
-
-            // Prioritize wlan0 interface
-            if (strcmp(ifa->ifa_name, "wlan0") == 0) {
-                inet_ntop(AF_INET, &addr->sin_addr, ip_str, len);
-                break;
-            }
-            // Fallback to any non-loopback interface
-            else if (strcmp(ifa->ifa_name, "lo") != 0) {
-                inet_ntop(AF_INET, &addr->sin_addr, ip_str, len);
-                // Don't break here, keep looking for wlan0
-            }
+            inet_ntop(AF_INET, &addr->sin_addr, ip_str, len);
+            break;
         }
     }
-
     freeifaddrs(ifaddrs_ptr);
 }
 
