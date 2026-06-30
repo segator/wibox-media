@@ -132,6 +132,9 @@ bounded local test, and then stops audio and the panel context.
   video, automatic-mode DTMF `#`, door unlock and cleanup on BYE.
 - Local MQTT mock test verifies the native MQTT client without mosquitto
   binaries.
+- `make verify` passes end-to-end for the current development state: local
+  MQTT regression, generated firmware image content, active WiBox daemon
+  checksum, and real broker retained discovery/state.
 - Real MQTT broker/Home Assistant verification passed:
   - retained discovery topics exist for 10 WiBox entities;
   - retained state topics show the WiBox online and idle;

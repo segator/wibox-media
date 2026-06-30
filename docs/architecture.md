@@ -44,8 +44,8 @@ wibox-media-daemon <--> MQTT/Home Assistant
 - `Sofia_temp.sh` is still required once per boot as a hardware warmup.
 - Video still runs in a daemon-forked child for GADI/ioctl crash containment.
 - `/mnt/mtd/sip_media.conf` keeps the historical name for compatibility.
-- Real MQTT/Home Assistant discovery still needs validation against the
-  production broker credentials/ACL.
+- Persistent flashing is intentionally guarded; the current WiBox runtime can
+  be tested from `/tmp` before writing `mtd4`.
 
 ## Target Runtime
 
@@ -134,6 +134,22 @@ DTMF # or MQTT open_door
 ## Migration Phases
 
 Each phase must keep the previous working behavior verified before moving on.
+
+Current verification targets:
+
+```text
+make test            host-side native MQTT regression test
+make verify-image    extract release/latest and validate firmware contents
+make verify-device   verify active WiBox daemon checksum and MQTT state
+make verify          run test + verify-image + verify-device
+```
+
+`verify-image` checks that the generated cramfs contains the expected daemon,
+default config, runtime libraries and boot script, and that legacy web/script
+runtime artifacts are absent. `verify-device` reads `/mnt/mtd/sip_media.conf`
+from the WiBox, verifies the active daemon executable checksum against the
+local build, then validates the retained Home Assistant MQTT discovery/state
+model against the configured broker.
 
 ### Phase 0: Lock Current Working Baseline
 
@@ -320,6 +336,12 @@ Verification:
   `mqtt_*.sh`, `heartbeat_mqtt.sh` or `mosquitto_*` files.
 - Local MQTT mock test exercises CONNECT, SUBSCRIBE, retained state publish,
   Home Assistant discovery publish, `door/open/set` and `video/enabled/set`.
+- `make verify-image` extracts `release/latest`, confirms the packaged daemon
+  checksum matches `include/bin/wibox-media-daemon`, checks the boot script and
+  default config, and rejects legacy runtime artifacts.
+- `make verify-device` passes against the real WiBox and broker using the
+  device's `/mnt/mtd/sip_media.conf`, with retained discovery/state validated
+  for the full 10-entity Home Assistant model.
 
 ## Production Invariants
 
