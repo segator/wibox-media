@@ -86,15 +86,13 @@ Safety notes:
 
 ## Fresh Device Journey
 
-Choose one path:
+The first install has shared preparation steps, then two possible install
+transports:
 
-- **Path A: B007/B010 with telnet.** Use the network install steps below.
-- **Path B: B013/newer or no telnet.** Use
-  [serial install or recovery](#path-b-serial-install-or-recovery).
+- **Network install** for tested B007/B010 units where telnet works.
+- **Serial install** for B013/newer, units without telnet, or recovery cases.
 
-### Path A: B007/B010 With Telnet
-
-#### 1. Log In
+### 1. Choose Access Method
 
 B007/B010 stock firmware normally exposes telnet:
 
@@ -110,9 +108,35 @@ user: root
 pass: aszeno
 ```
 
-If login fails and the unit is B013 or newer, use Path B.
+If telnet works, use the network install transport later in this guide. If login
+fails, or the unit is B013/newer, use serial.
 
-#### 2. Back Up the Factory Flash
+Serial terminal options:
+
+```bash
+picocom -b 115200 /dev/ttyUSB0
+```
+
+Or:
+
+```bash
+minicom -s
+```
+
+Serial settings: `115200` baud, hardware flow control disabled. The WiBox
+console is `ttySGK2`.
+
+| WiBox board | USB TTL adapter |
+|-------------|-----------------|
+| GND         | GND             |
+| TX          | RX              |
+| RX          | TX              |
+
+![Serial connector](docs/img/serial.jpg)
+![WiBox board](docs/img/board.jpg)
+![WiBox back board](docs/img/backboard.jpg)
+
+### 2. Back Up the Factory Flash
 
 At minimum, keep a copy of `mtd4`, the `/usr` cramfs partition. This repository
 builds the custom image by extracting that partition and replacing selected
@@ -145,7 +169,7 @@ After the custom firmware is running, future backups can use:
 make backup-mtd4
 ```
 
-#### 3. Configure Persistent WiFi
+### 3. Configure Persistent WiFi
 
 This step is critical. Configure it before flashing the custom image.
 
@@ -169,7 +193,7 @@ network={
 
 The generated firmware uses this file to bring WiFi back after boot.
 
-#### 4. Build the Firmware on Your Computer
+### 4. Build the Firmware on Your Computer
 
 Build the project Docker image:
 
@@ -177,9 +201,10 @@ Build the project Docker image:
 make docker
 ```
 
-This creates `wibox-build-tool:latest`. It contains the ARM toolchain,
-PJProject, the SDK build environment and statically built `cramfsck/mkcramfs`
-using Ubuntu 16.04 zlib 1.2.8.
+This creates `wibox-build-tool:latest` from the existing `wibox-build:latest`
+base image. The base image provides the ARM toolchain, PJProject and SDK build
+environment; this repository adds statically built `cramfsck/mkcramfs` using
+Ubuntu 16.04 zlib 1.2.8.
 
 Build the daemon and final `/usr` cramfs image:
 
@@ -194,7 +219,7 @@ release/image-YYMMDD-HHMM
 release/latest -> image-YYMMDD-HHMM
 ```
 
-#### 5. Verify the Local Image
+### 5. Verify the Local Image
 
 Before the first flash, only local verification is possible:
 
@@ -210,7 +235,7 @@ make verify-device
 make verify
 ```
 
-#### 6. Configure SIP, Video and MQTT
+### 6. Configure SIP, Video and MQTT
 
 The runtime config lives on the WiBox:
 
@@ -250,17 +275,21 @@ Set `video_enabled=0` for intercom installations without video support.
 
 Do not commit real MQTT credentials. Store them only on the device.
 
-#### 7. First Flash From Stock Firmware
+### 7. Install The First Custom Image
 
-On B007/B010 stock firmware, upload the generated image with `nc`.
+Use one of the two transports below.
 
-On your computer:
+#### Option A: Network Install With Telnet And nc
+
+Use this on tested B007/B010 stock firmware when telnet works.
+
+On your computer, serve the generated image:
 
 ```bash
 nc -l -p 8888 < release/latest
 ```
 
-On the WiBox:
+On the WiBox, download it and flash it:
 
 ```sh
 PC_IP=192.168.1.100
@@ -278,7 +307,47 @@ sync
 reboot
 ```
 
-#### 8. Later Flashes With Custom Firmware
+#### Option B: Serial Install
+
+Use this for B013/newer firmware, units without telnet, or recovery cases.
+
+The goal is to place `release/latest` on the WiBox as `/tmp/update.img`, then
+run the updater.
+
+If Linux boots to a serial shell, use a terminal file-transfer feature. With
+`rx` available on the WiBox:
+
+```sh
+cd /tmp
+rx update.img
+```
+
+Then, from `minicom`, use the send-file menu and send `release/latest` with
+XMODEM. Some terminal programs also support YMODEM; either is fine as long as
+it creates `/tmp/update.img`.
+
+After the transfer finishes:
+
+```sh
+ls -lh /tmp/update.img
+/usr/bin/update_firmware.sh
+reboot
+```
+
+If the updater is unavailable, manual write is the fallback:
+
+```sh
+dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
+sync
+reboot
+```
+
+If Linux does not boot far enough for a shell, use the
+[U-Boot recovery](#3-recovery-via-u-boot) steps. To enter U-Boot, connect the
+serial console, power the board, and press Enter immediately; the bootloader
+wait window is about one second after power is applied.
+
+### 8. Later Flashes With Custom Firmware
 
 After this firmware is installed, dropbear SSH is available and future updates
 should use the guarded tooling:
@@ -293,59 +362,6 @@ reboot
 `make flash-dry-run` builds the image, uploads or reuses `/tmp/update.img`,
 checks hashes and stops before writing flash. `make flash` automatically runs
 `backup-mtd4` before writing.
-
-### Path B: Serial Install Or Recovery
-
-Use this path for B013/newer firmware, for devices without telnet, or when a
-previous flash broke network access.
-
-Use a serial terminal such as `minicom` or `picocom`. Configure it for
-`115200` baud and disable hardware flow control.
-
-Example:
-
-```bash
-picocom -b 115200 /dev/ttyUSB0
-```
-
-Or with minicom:
-
-```bash
-minicom -s
-```
-
-The WiBox console is `ttySGK2`.
-
-| WiBox board | USB TTL adapter |
-|-------------|-----------------|
-| GND         | GND             |
-| TX          | RX              |
-| RX          | TX              |
-
-![Serial connector](docs/img/serial.jpg)
-![WiBox board](docs/img/board.jpg)
-![WiBox back board](docs/img/backboard.jpg)
-
-If nothing appears on serial during boot, enter U-Boot and set:
-
-```sh
-setenv consoledev 'ttySGK0'
-saveenv
-reset
-```
-
-From a serial shell, transfer `release/latest` to `/tmp/update.img` and write
-it:
-
-```sh
-/usr/bin/update_firmware.sh
-reboot
-```
-
-If Linux does not boot far enough for a shell, use the
-[U-Boot recovery](#3-recovery-via-u-boot) steps. To enter U-Boot, connect the
-serial console, power the board, and press Enter immediately; the bootloader
-wait window is about one second after power is applied.
 
 ## Runtime Behavior
 
