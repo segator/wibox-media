@@ -8,7 +8,7 @@ on:
         required: false
         type: string
       upload_to_release:
-        description: "Upload image to the GitHub Release when policy allows it"
+        description: "Upload image to the GitHub Release"
         required: true
         default: true
         type: boolean
@@ -73,14 +73,15 @@ jobs:
           if [ -z "${tag}" ]; then
             tag="manual-${GITHUB_RUN_NUMBER}"
           fi
-          safe_tag=$(printf "%s" "${tag}" | tr -c 'A-Za-z0-9._-' '-')
-          image="wibox-media-${safe_tag}.img"
+          version="${tag#wibox-media-}"
+          safe_version=$(printf "%s" "${version}" | tr -c 'A-Za-z0-9._-' '-')
+          image="wibox-media-${safe_version}.img"
           cp -L release/latest "${image}"
           sha256sum "${image}" > SHA256SUMS
           md5sum "${image}" > MD5SUMS
           {
             echo "tag=${tag}"
-            echo "safe_tag=${safe_tag}"
+            echo "safe_tag=${safe_version}"
             echo "image=${image}"
           } >> "${GITHUB_OUTPUT}"
 
