@@ -43,10 +43,10 @@ make deploy-runtime
 make verify
 ```
 
-`verify` runs the host regression test, checks the active WiBox daemon checksum,
-and validates retained MQTT discovery/state using `/mnt/mtd/sip_media.conf`
-from the device. You can also verify retained MQTT discovery and state manually
-with:
+`verify` runs the host regression test, verifies `release/latest` contents,
+checks the active WiBox daemon checksum, and validates retained MQTT
+discovery/state using `/mnt/mtd/sip_media.conf` from the device. You can also
+verify retained MQTT discovery and state manually with:
 
 ```bash
 MQTT_HOST=192.168.10.2 MQTT_USER=mqtt MQTT_PASS=password make verify-mqtt

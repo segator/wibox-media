@@ -8,6 +8,7 @@ patch.log
 *.pcap
 *.img
 __pycache__/
+.verify-image-root/
 
 /d1_*.h264
 /d1_*.mp4
