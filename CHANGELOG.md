@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.8](https://github.com/segator/wibox-media/compare/v0.4.7...v0.4.8) (2026-07-01)
+
+
+### Bug Fixes
+
+* pin firmware build dependencies ([92306cf](https://github.com/segator/wibox-media/commit/92306cf82e23731815f2965db077a75c8a9e016c))
+* use verified firmware update writes ([b692f7d](https://github.com/segator/wibox-media/commit/b692f7d4897abf83c14b93fff04e7b4d5d7f29bc))
+
 ## [0.4.3](https://github.com/segator/wibox-media/compare/wibox-media-v0.4.2...wibox-media-v0.4.3) (2026-06-30)
 
 
