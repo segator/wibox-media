@@ -24,7 +24,7 @@ The main runtime is `wibox-media-daemon`.
 ## Current Release
 
 <!-- x-release-please-start-version -->
-[v0.5.1](https://github.com/segator/wibox-media/releases/tag/v0.5.0)
+[v0.5.1](https://github.com/segator/wibox-media/releases/tag/v0.5.1)
 <!-- x-release-please-end -->
 
 Download the latest release image:
