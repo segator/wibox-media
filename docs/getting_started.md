@@ -82,12 +82,16 @@ network={
 
 ## 5. Get The Firmware Image
 
-Use the latest GitHub Release image:
+On your computer, download the latest GitHub Release image:
 
 ```bash
 VERSION="v0.5.1"  # x-release-please-version
 wget -O wibox-media.img "https://github.com/segator/wibox-media/releases/download/${VERSION}/wibox-media-${VERSION}.img"
 ```
+
+Do not run this on the stock WiBox. Its `wget` cannot download GitHub HTTPS
+release assets. The next step transfers the already-downloaded image from your
+computer to the WiBox with `nc`.
 
 To build locally instead:
 

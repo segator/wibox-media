@@ -35,6 +35,11 @@ VERSION="v0.5.1"  # x-release-please-version
 wget -O wibox-media.img "https://github.com/segator/wibox-media/releases/download/${VERSION}/wibox-media-${VERSION}.img"
 ```
 
+Run that command on your computer, not on the stock WiBox. The stock WiBox
+`wget` cannot download GitHub HTTPS release assets. For first installation,
+download the image on your computer and transfer it to the WiBox with `nc` as
+shown in [Getting Started](docs/getting_started.md).
+
 You do not need to build from source unless you are developing the firmware.
 
 ## Supported Devices
