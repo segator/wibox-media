@@ -1554,6 +1554,11 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata) {
         PJ_LOG(3,(THIS_FILE, "Processing INFO request"));
         handle_sip_info_dtmf(rdata);
 
+    } else if (method->name.slen == 7 &&
+               strncmp(method->name.ptr, "OPTIONS", 7) == 0) {
+        PJ_LOG(3,(THIS_FILE, "Processing OPTIONS request"));
+        pjsip_endpt_respond_stateless(sip_endpt, rdata, 200, NULL, NULL, NULL);
+
     } else {
         PJ_LOG(3,(THIS_FILE, "Unsupported method: %.*s", method->name.slen, method->name.ptr));
         pjsip_endpt_respond_stateless(sip_endpt, rdata, 405, NULL, NULL, NULL);
