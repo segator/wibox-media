@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/segator/wibox-media/compare/v0.5.1...v0.5.2) (2026-07-01)
+
+
+### Bug Fixes
+
+* clarify first install image transfer ([35da324](https://github.com/segator/wibox-media/commit/35da32463d14f2435b849fb11264072e02f9fac6))
+
 ## [0.5.1](https://github.com/segator/wibox-media/compare/v0.5.0...v0.5.1) (2026-07-01)
 
 
