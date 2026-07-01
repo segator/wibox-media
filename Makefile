@@ -1,69 +1,62 @@
 .DEFAULT_GOAL := help
-.PHONY: docker docker-shell build build-inside build-media test verify verify-image verify-mqtt verify-runtime verify-device deploy-runtime backup-mtd4 flash flash-dry-run status extract patch pack clean help
 
-BUILD_DIR = cramfs
-FILE = mtd4
+.PHONY: \
+	docker docker-shell build build-media prepare-base test verify verify-image \
+	deploy-runtime verify-device verify-runtime verify-mqtt device-status \
+	build-inside extract patch pack clean help
+
+BUILD_DIR := cramfs
+BASE_IMAGE := mtd4
 DATE := $(shell date +%y%m%d-%H%M)
-IMAGE = wibox-build-tool:latest
+BUILD_IMAGE := wibox-build-tool:latest
+
 WIBOX_IP ?= 192.168.0.196
 WIBOX_USER ?= root
 WIBOX_PASS ?= qv2008
 
-# ── one-time: build the Docker build-tool ──────────────────────────
 docker:
-	docker build -t $(IMAGE) .
+	docker build -t $(BUILD_IMAGE) .
 
 docker-shell:
-	docker run --rm -it -v $(PWD):/build $(IMAGE) bash
+	docker run --rm -it -v $(PWD):/build $(BUILD_IMAGE) bash
 
-# ── build firmware image ───────────────────────────────────────────
-build: build-media
-	docker run --rm -v $(PWD):/build $(IMAGE) make build-inside
+build: prepare-base build-media
+	docker run --rm -v $(PWD):/build $(BUILD_IMAGE) make build-inside
 
-build-media:
-	BUILD_IMAGE=$(IMAGE) scripts/build_wibox_media_daemon.sh
+prepare-base:
+	@if [ ! -f "$(BUILD_DIR)/lib/libssl.so.1.1" ] || [ ! -f "$(BUILD_DIR)/lib/libcrypto.so.1.1" ]; then \
+		echo "[*] Extracting base image for build libraries"; \
+		docker run --rm -v $(PWD):/build $(BUILD_IMAGE) make extract; \
+	fi
+
+build-media: prepare-base
+	BUILD_IMAGE=$(BUILD_IMAGE) scripts/build_wibox_media_daemon.sh
 	rm -f src/sip_media/sip_media src/sip_media/wibox-media-daemon src/sip_media/*.o
-	rm -f src/video_rtp_bridge/video_rtp_bridge
 
 test:
 	tests/mqtt_native_mock.py
 
-verify: test verify-image verify-device
+verify: test verify-image
 
 verify-image:
 	@scripts/verify_image.sh
 
-verify-mqtt:
-	scripts/verify_mqtt.py
-
-verify-runtime:
-	@echo "[*] Verifying active WiBox runtime"
-	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
-		scripts/verify_runtime.sh
-
-verify-device:
-	@echo "[*] Verifying WiBox device"
-	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
-		scripts/verify_device.sh
-
 deploy-runtime: build-media
 	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
 		scripts/deploy_runtime.sh
-	@$(MAKE) verify-device
 
-backup-mtd4:
+verify-device:
 	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
-		scripts/backup_mtd4.sh
+		scripts/verify_device.sh
 
-flash: build backup-mtd4
+verify-runtime:
 	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
-		CONFIRM_FLASH=$(CONFIRM_FLASH) scripts/flash_firmware.sh release/latest
+		scripts/verify_runtime.sh
 
-flash-dry-run: build
-	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
-		CONFIRM_FLASH=YES FLASH_DRY_RUN=1 scripts/flash_firmware.sh release/latest
+verify-mqtt:
+	scripts/verify_mqtt.py
 
-status:
+device-status:
 	@WIBOX_IP=$(WIBOX_IP) WIBOX_USER=$(WIBOX_USER) WIBOX_PASS=$(WIBOX_PASS) \
 		scripts/device_status.sh
 
@@ -71,7 +64,7 @@ build-inside: extract patch pack
 
 extract:
 	rm -rf $(BUILD_DIR)
-	cramfsck -x $(BUILD_DIR) $(FILE)
+	cramfsck -x $(BUILD_DIR) $(BASE_IMAGE)
 
 patch:
 	@for PATCH in scripts/??_*.sh; do \
@@ -91,35 +84,37 @@ pack:
 	@ls -la release/latest
 	@md5sum release/image-$(DATE)
 
-# ── cleanup ────────────────────────────────────────────────────────
 clean:
-	rm -f include/sbin/dropbearmulti include/sbin/dropbear include/sbin/dropbearkey include/sbin/dropbearconvert
-	rm -f include/bin/scp include/bin/dbclient include/bin/firmware_update
+	rm -f include/bin/dbclient include/bin/ipctool include/bin/scp
+	rm -f include/etc/wibox-release
 	rm -f src/sip_media/sip_media src/sip_media/wibox-media-daemon src/sip_media/*.o
-	rm -f src/video_rtp_bridge/video_rtp_bridge
-	rm -rf $(BUILD_DIR) .verify-image-root patch.log 2>/dev/null
+	@if docker image inspect $(BUILD_IMAGE) >/dev/null 2>&1; then \
+		docker run --rm -v $(PWD):/build $(BUILD_IMAGE) bash -lc "rm -rf /build/$(BUILD_DIR) /build/.verify-image-root /build/patch.log /build/release /build/include/sbin"; \
+	else \
+		rm -rf $(BUILD_DIR) .verify-image-root patch.log release include/sbin 2>/dev/null || true; \
+	fi
 
-# ── help ───────────────────────────────────────────────────────────
 help:
-	@echo "WiBox Firmware Builder"
+	@echo "WiBox Media"
 	@echo ""
-	@echo "  1. make docker    Build Docker build-tool (one-time)"
-	@echo "  2. make build     Build media binaries and firmware image (cramfs)"
-	@echo "  3. make build-media  Build wibox-media-daemon"
-	@echo "  4. make test      Run host-side regression tests"
-	@echo "  5. make verify   Run host tests and WiBox runtime/MQTT verification"
-	@echo "  6. make verify-image  Verify release/latest contents"
-	@echo "  7. make verify-mqtt  Verify Home Assistant MQTT discovery/state"
-	@echo "  8. make verify-runtime  Verify active WiBox daemon matches local binary"
-	@echo "  9. make verify-device  Verify runtime and MQTT using WiBox config"
-	@echo " 10. make deploy-runtime  Upload current daemon to /tmp and restart it"
-	@echo " 11. make backup-mtd4  Save and verify current WiBox /usr partition"
-	@echo " 12. make flash CONFIRM_FLASH=YES  Backup then flash release/latest to mtd4"
-	@echo " 13. make flash-dry-run  Validate flash upload/checks without writing mtd4"
-	@echo " 14. make status    Show WiBox runtime status"
+	@echo "Common:"
+	@echo "  make docker          Build the local firmware build image"
+	@echo "  make build           Build media binaries and release/latest"
+	@echo "  make build-media     Build wibox-media-daemon and firmware_update only"
+	@echo "  make test            Run host MQTT regression tests"
+	@echo "  make verify          Run local tests and verify release/latest"
+	@echo "  make verify-image    Inspect release/latest contents"
+	@echo "  make clean           Remove local build artifacts"
 	@echo ""
-	@echo "  Uses:          ./mtd4 and ./third_party/gk710x-sdk-min"
-	@echo "  Output:        release/image-YYMMDD-HHMM"
+	@echo "Device development:"
+	@echo "  make deploy-runtime  Run current daemon from /tmp on a WiBox"
+	@echo "  make verify-device   Verify active runtime and MQTT against a WiBox"
+	@echo "  make device-status   Show process, config and recent daemon log"
 	@echo ""
-	@echo "  make clean      Remove build artifacts"
-	@echo "  make docker-shell  Open shell inside build-tool"
+	@echo "Variables:"
+	@echo "  WIBOX_IP=$(WIBOX_IP)"
+	@echo "  WIBOX_USER=$(WIBOX_USER)"
+	@echo "  WIBOX_PASS=<hidden>"
+	@echo ""
+	@echo "First install and recovery are documented in docs/getting_started.md and docs/recovery.md."
+	@echo "Routine upgrades use /usr/bin/firmware_update or Home Assistant."

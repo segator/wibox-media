@@ -1,20 +1,19 @@
+# Build outputs
 cramfs/
 release/
-other/
-backups/
-/tmp
+.verify-image-root/
 patch.log
 
-*.pcap
+# Device backups and captured media
+backups/
 *.img
-__pycache__/
-.verify-image-root/
-
+*.pcap
 /d1_*.h264
 /d1_*.mp4
 /d1_*.log
 /d1_video_capture
 
+# Generated binaries
 /src/audio_bridge/audio_bridge
 /src/audio_bridge/*.o
 /src/audio_bridge/*.so
@@ -22,27 +21,32 @@ __pycache__/
 /src/sip_media/wibox-media-daemon
 /src/sip_media/*.o
 /src/video_rtp_bridge/video_rtp_bridge
+/include/bin/dbclient
+/include/bin/firmware_update
+/include/bin/ipctool
+/include/bin/mosquitto_*
+/include/bin/scp
+/include/bin/strace
+/include/bin/dropbear*
+/include/sbin/
+/include/etc/wibox-release
 
+# Local toolchain/build scratch
 arm-goke-linux-uclibcgnueabi
-
-.config
-/defconfig*
-
-include/bin/mosquitto_*
-include/bin/strace
-include/bin/ipctool
-include/bin/scp
-include/bin/dbclient
-include/bin/dropbear*
-include/sbin/dropbear*
-include/etc/wibox-release
-vrfy/
+crosstool/
 cramfsck
 mkcramfs
-cramfs/
-release/
-mkcramfs
-cramfsck
 mtd4.bak
+/defconfig*
+.config
+
+# Python/cache/editor noise
+__pycache__/
+*.pyc
+*.swp
+
+# Local research extracts
 research/sofia_re/
+
+# Codebase memory artifact
 .codebase-memory/

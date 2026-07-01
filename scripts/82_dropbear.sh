@@ -29,18 +29,15 @@ echo "[*] Building ${PACKAGE_NAME}"
 cd ${PACKAGE_NAME}
 ./configure --enable-static --disable-zlib --disable-lastlog \
   --host=arm-goke-linux-uclibcgnueabi --target=arm-goke-linux-uclibcgnueabi
-make PROGRAMS="dropbear dbclient dropbearkey dropbearconvert scp" MULTI=1
+make PROGRAMS="dropbear dropbearkey" MULTI=1
 arm-goke-linux-uclibcgnueabi-strip dropbearmulti
 cd ..
 
 echo "[*] Installing"
-mkdir -p include/sbin include/bin
+mkdir -p include/sbin
 cp ${PACKAGE_NAME}/dropbearmulti include/sbin/
-for n in dropbear dropbearkey dropbearconvert; do
+for n in dropbear dropbearkey; do
   ln -sf dropbearmulti include/sbin/${n}
-done
-for n in dbclient scp; do
-  ln -sf ../sbin/dropbearmulti include/bin/${n}
 done
 rm -rf ${PACKAGE_NAME} ${PACKAGE_DOWNLOAD##*/}
 echo "[*] ${PACKAGE_NAME} built successfully"

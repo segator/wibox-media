@@ -1,175 +1,135 @@
-# AGENTS.md — WiBox GK7102S Media Capture Project
+# AGENTS.md
 
-## Purpose
+<!-- codebase-memory-mcp:start -->
+# Codebase Knowledge Graph (codebase-memory-mcp)
 
-Reverse-engineering H.264 D1 (688×576) video capture from a **WiBox GK7102S** IP camera
-without relying on the vendor's Sofia binary. Goal: capture raw H.264 bitstream directly
-via kernel ioctls using the GADI SDK (`libadi.a`) for initialization only.
+This project uses codebase-memory-mcp to maintain a knowledge graph of the
+codebase. Prefer MCP graph tools over grep/glob/file-search for code discovery.
 
-## Before Any Task — Read These Files
+Priority order:
 
-**Start here (current state + full history):**
-- `research/FASE3_PROGRESS.md` — complete progress log, all blockers, next steps
-- `research/KERNEL_ANALYSIS.md` — `media.ko` reverse engineering reference (ioctl dispatch table, struct layouts, sys_state fields)
-- `research/SOFIA_IOCTL_ANALYSIS.md` — full trace analysis of Sofia's 4,969 ioctls (thread map, init sequence, streaming sequence)
+1. `search_graph` / `search_code`
+2. `trace_path`
+3. `get_code_snippet`
+4. `query_graph`
+5. `get_architecture`
 
-**Source code:**
-- `src/sip_media/` — `wibox-media-daemon`: SIP, RTP audio/video, serial intercom, DTMF, MQTT/Home Assistant.
-- `src/sip_media/video_worker.c` — integrated D1 H.264 RTP worker derived from the verified capture path.
-- `src/sip_media/audio_hw.c` — direct GADI audio hardware path imported from `wibox-audio`.
-- `src/audio_bridge/` and `src/video_rtp_bridge/` — retained source/debug references, not packaged runtime binaries.
+Fallback to `rg` for string literals, non-code files, scripts, configs and
+documentation.
+<!-- codebase-memory-mcp:end -->
 
-**Sofia ioctl traces (ground truth):**
-- `sofia_ioctls_captured.log` — full ioctl trace from Sofia (root/working dir copy)
-- `research/iotrace_full_4969_ioctls.log` — complete 4969-ioctl trace with all args
-- `research/iotrace_with_buffer_dumps.log` — trace with buffer contents for key ioctls
-- `research/sofia_ioctls_unique.txt` — deduplicated list of all unique ioctls seen
+## Project Purpose
 
-**Device documentation:**
-- `docs/system.md` — WiBox hardware: CPU, sensors, memory map, device nodes
-- `docs/codes.md` — error codes, return value reference
-- `include/wibox_codes.txt` — WiBox-specific error codes
+WiBox Media is custom firmware for the Fermax WiBox GK7102S intercom. It runs a
+local SIP media daemon with audio, optional H.264 D1 video, DTMF/MQTT door
+unlock, Home Assistant discovery, Prometheus metrics and GitHub-release based
+firmware updates.
 
-## Hardware & Environment
+The packaged runtime binary is:
+
+```text
+/usr/bin/wibox-media-daemon
+```
+
+## Start Here
+
+For product/user context:
+
+- `README.md`
+- `docs/getting_started.md`
+- `docs/recovery.md`
+- `docs/sip_media.md`
+- `docs/updates.md`
+- `docs/architecture.md`
+
+For low-level reverse-engineering context:
+
+- `research/FASE3_PROGRESS.md`
+- `research/KERNEL_ANALYSIS.md`
+- `research/SOFIA_IOCTL_ANALYSIS.md`
+- `docs/d1_video_capture.md`
+- `research/iotrace_full_4969_ioctls.log`
+- `research/iotrace_with_buffer_dumps.log`
+
+## Important Source Paths
+
+- `src/sip_media/`: `wibox-media-daemon`.
+- `src/sip_media/audio_hw.c`: direct GADI audio hardware path.
+- `src/sip_media/video_worker.c`: D1 H.264 video worker wrapper.
+- `src/video_rtp_bridge/video_rtp_bridge.c`: embedded D1 capture implementation
+  included by the daemon worker, not a packaged runtime binary.
+- `src/audio_bridge/ap.c`: AP/AEC helper imported from `wibox-audio`, used by
+  direct daemon audio.
+- `src/firmware_update.c`: HTTPS release downloader, verifier and MTD updater.
+- `scripts/verify_image.sh`: generated image invariant checks.
+- `tests/mqtt_native_mock.py`: host MQTT/Home Assistant regression test.
+
+## Hardware And Device
 
 | Item | Value |
 |------|-------|
-| Device | WiBox GK7102S, ARM11 (ARM1176JZF-S) |
-| Camera | PAL CVBS sensor, D1 = 688×576 |
-| IP | 192.168.0.196, root / qv2008 |
-| SSH | dropbear (no sftp — use base64 pipe for binary upload) |
-| Kernel module | `/ko/media.ko` (r13210, not stripped) |
-| SDK lib | `libadi.a` r10973 in `GK710X_LinuxSDK_v2.0.0/` |
+| Device | WiBox GK7102S, ARM11 |
+| Camera | PAL CVBS sensor, D1 = 688x576 |
+| Default dev IP | `192.168.0.196` |
+| Default root password | `qv2008` |
+| Intercom serial | `/dev/ttySGK1` |
+| Custom `/usr` partition | `mtd4` |
+| Persistent config | `/mnt/mtd` |
 
-**Binary upload to WiBox:**
+Stock firmware normally has telnet or serial, not SSH. Custom firmware starts
+Dropbear SSH.
+
+## Build And Test
+
 ```bash
-base64 binary | ssh root@192.168.0.196 "base64 -d > /tmp/bin && chmod +x /tmp/bin"
+make docker
+make build
+make verify
 ```
 
-**Build (Docker):**
+Development against a running custom WiBox:
+
 ```bash
-docker run --rm -v $(pwd):/work -v /path/to/sdk:/sdk wibox-build:latest \
-  arm-goke-linux-uclibcgnueabi-gcc -static -std=gnu99 \
-  -I/sdk/include -I/sdk/gadi_include \
-  -o /work/out /work/src.c /sdk/lib/libadi.a -lpthread -lm
+make deploy-runtime
+make verify-device
+make device-status
 ```
 
-## Current State (as of 2026-06-29)
+Routine firmware updates should use `/usr/bin/firmware_update` or Home
+Assistant. Do not reintroduce Makefile flashing targets unless there is a
+specific reason.
 
-### What works
-- `wibox-media-daemon` captures and sends H.264 `stream_id==0` from the main D1 encoder.
-- Resolution verified by `ffprobe`: `688x576`, H.264 Main profile.
-- Real camera image works when the MCU call path is enabled with `/dev/ttySGK1`.
-- Sofia is still required as a one-time warmup after boot, but not per call.
+## Current Runtime Facts
 
-### Stream ID map
-| stream_id | Encoder type | Resolution |
-|-----------|-------------|------------|
-| 0 | type0 (main) | 688×576 — **D1 target** |
-| 1 | type1 | 352×288 |
-| 2 | type2 | 352×288 |
-| 3 | type3 | preview |
+- Sofia is still run once per boot as `Sofia_temp.sh` for video hardware warmup.
+- Sofia is not used per call.
+- `wibox-media-daemon` owns serial, SIP, audio, video, MQTT and updater control.
+- Home Assistant state is intentionally simple: `media_state` is `idle`,
+  `ringing` or `established`.
+- Older MQTT entities such as `last_ring`, `last_unlock`, `call_active`,
+  `sip_call_active` and `video_active` should remain cleared from discovery.
+- `video_enabled=1` defaults to video-capable calls; set it to `0` for audio-only
+  installations.
 
-### Current video workflow
-1. `run.sh` starts `Sofia_temp.sh` once after boot for the video hardware warmup.
-2. `run.sh` starts `wibox-media-daemon`.
-3. On a SIP call, the daemon sends `START_CALL` to `/dev/ttySGK1`.
-4. The in-daemon video worker captures D1 `stream_id==0` and sends RTP H.264.
-5. On hangup, the daemon stops video/audio and sends `STOP_CALL`.
+## D1 Video Notes
 
-### SIP media integration
-- `wibox-media-daemon` builds and is the only packaged media runtime binary.
-- `wibox-media-daemon` advertises PCMA audio plus H.264 video in SDP.
-- On established calls, the daemon sends `START_CALL`, starts direct GADI audio RTP,
-  and forks the in-daemon video worker for D1 H.264 RTP.
-- On hangup, it stops video, stops audio, and sends `STOP_CALL`.
-- End-to-end MicroSIP audio/video and DTMF door unlock have been verified.
+The working D1 path captures H.264 `stream_id == 0` from the main encoder:
 
-## Key Technical Facts
-
-### `0x40047687` struct (40 bytes, NOT 4)
-`_IOC_SIZE` reports 4 bytes but the driver copies 40 internally:
-```c
-struct srcbuf_format_t {
-    uint16_t main_width;    // 0:  must be multiple of 16 (688)
-    uint16_t main_height;   // 2:  must be even (576)
-    uint16_t ch_mode_0;     // 4:  0..2
-    uint16_t sub1_w;        // 6:  <= main_width
-    uint16_t sub1_h;        // 8:  <= main_height
-    uint16_t main_w_dup;    // 10: = main_width
-    uint16_t main_h_dup;    // 12: = main_height
-    uint16_t ch_mode_1;     // 14:
-    uint16_t sub2_w;        // 16:
-    uint16_t sub2_h;        // 18:
-    uint16_t main_w_dup2;   // 20:
-    uint16_t main_h_dup2;   // 22:
-    uint16_t ch_mode_2;     // 24:
-    uint16_t sub3_w;        // 26:
-    uint16_t sub3_h;        // 28:
-    uint16_t main_w_dup3;   // 30:
-    uint16_t main_h_dup3;   // 32:
-    uint16_t ch_mode_3;     // 34:
-    uint8_t  interlace_scan;// 36: 0=progressive, 1=interlaced
-    uint8_t  pad[3];        // 37-39
-};
+```text
+stream_id 0 -> 688x576 main stream
+stream_id 2 -> CIF/sub stream observed during testing
 ```
 
-### Sofia ioctl sequence (before `0x40047687`)
-```
-0x80047652  ('v',0x52) READ   GET_VERSION
-0x40047654  ('v',0x54) WRITE  SET_ENCODE_STATE=0  (reset)
-0x80047670  ('v',0x70) READ   GET_CHIP_INFO
-0x40047316  ('s',0x16) WRITE  VI_SOURCE: set source mode
-0x80047301  ('s',0x01) READ   VI_SOURCE: get state
-0x80047304  ('s',0x04) READ   VI_SOURCE: get format
-0x80046920  ('i',0x20) READ   VI_ADAPTER: get info
-0x40046921  ('i',0x21) WRITE  VI_ADAPTER: configure
-0x40047303  ('s',0x03) WRITE  VI_SOURCE: set
-0x4004730b  ('s',0x0b) WRITE  VI_SOURCE: set
-0x40047304  ('s',0x04) WRITE  VI_SOURCE: set FPS
-0x80047305  ('s',0x05) READ   VI_SOURCE: GET CAPABILITIES  ← sets sys_state[0xdc]
-0x40047673  ('v',0x73) WRITE  SYS: set resource limits
-0x40047687  ('v',0x87) WRITE  SYS: SET_SRCBUF_FORMAT (40 bytes)
-0x40047683  ('v',0x83) WRITE  SYS: SET_SRCBUF_TYPE
-```
+The daemon video worker uses GADI open/map calls plus raw ioctls. The full
+VI/sensor initialization is not yet reproduced, so the boot Sofia warmup remains
+necessary.
 
-### sys_state global (.data+0 of media.ko)
-| Offset | Description |
-|--------|-------------|
-| 0x0c   | current_width (set by 0x40047687) |
-| 0x0e   | current_height |
-| 0x18   | current_ch_mode |
-| 0xd0   | encode_state (0=stopped, 2=streaming) — must be 0 to reconfigure |
-| 0xdc   | pointer to VI subsystem state — **must be non-NULL for 0x40047687** |
-| 0xf8   | part of string "video_out0" (NOT a width limit — value 0x6976=26998) |
+## Repository Hygiene
 
-### SDK init order (correct)
-```c
-gadi_sys_init(NULL);
-gadi_vi_init(handle);   gadi_vi_open(handle, 0);
-gadi_vout_init(handle); gadi_vout_open(handle, 0);
-gadi_venc_init(handle); gadi_venc_open(handle, 0);
-gadi_venc_map_bsb(handle);   // no extra args!
-// then: gadi_venc_get_stream(handle, stream_id, &stream)
-```
-
-### Known pitfalls
-- **Sofia warmup required once per boot**: VI system state (`sys_state[0xdc]`) is only
-  valid after Sofia initializes the VI pipeline (~30s). Kill Sofia after warmup.
-- **`0x80047652` is GET_VERSION, NOT stop_stream** — the correct reset is `0x40047654` with value 0.
-- **SDK SET functions SEGV**: `gadi_venc_set_channels_params`, `gadi_venc_set_stream_format`,
-  `gadi_venc_set_h264_config` — all crash before reaching the ioctl (SDK r10973 vs kernel r13210 mismatch).
-  Use raw fd ioctls for all SET operations.
-- **`get_stream(0xFF)` wildcard works**: passing specific stream_id to `gadi_venc_get_stream` fails;
-  0xFF captures any available stream — then filter by `stream.stream_id`.
-- **`[ERROR] drv in wrong state 2`**: appears on `gadi_sys_init` when encoder was already running.
-  Not fatal — init continues.
-- **Upload binaries via base64**: WiBox dropbear has no sftp support.
-- **`/tmp` is tmpfs**: all uploaded binaries are lost on reboot.
-
-## Compilation Environment
-
-- Docker image: `wibox-build:latest` (cross-compiler `arm-goke-linux-uclibcgnueabi-gcc 4.6.1`)
-- SDK headers: `GK710X_LinuxSDK_v2.0.0/adi/include/` + `gk7102_sdk/src/adi/include/`
-- SDK lib: `GK710X_LinuxSDK_v2.0.0/install/arm11-gcc-uClibc-linux-GK710XS/lib/libadi.a`
-- Flags: `-static -std=gnu99 -Os`
+- Keep generated `cramfs/`, `release/`, `.verify-image-root/`, backups and
+  extracted Sofia binaries out of git.
+- Keep the README user-focused. Put detailed operational docs in `docs/` and
+  reverse-engineering evidence in `research/`.
+- The production image must not package legacy listener scripts, web UI runtime
+  scripts, `mosquitto_*`, `audio_bridge`, `video_rtp_bridge`, `sip_media`, or
+  shell updater wrappers.

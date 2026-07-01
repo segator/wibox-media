@@ -4,6 +4,9 @@ cramfs/
 release/
 backups/
 .git/
+.codebase-memory/
+.verify-image-root/
+research/sofia_re/
 *.img
 *.pcap
 __pycache__/

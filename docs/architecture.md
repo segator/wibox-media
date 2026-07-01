@@ -1,375 +1,182 @@
-# WiBox Media Architecture
+# Architecture
 
-This document tracks the migration from the current working multi-process
-prototype to the production `wibox-media-daemon`.
+This is the current production shape of the custom WiBox image.
 
-## Current Runtime
-
-The current firmware boots these relevant processes:
+## Boot Flow
 
 ```text
-run.sh
-  -> Sofia_temp.sh                 one-time video hardware warmup
-  -> app_watchdog.sh wibox-media-daemon
-
-wibox-media-daemon
-  - serial /dev/ttySGK1 state machine
-  - SIP signaling and call lifecycle
-  - direct GADI AI/AO audio
-  - native MQTT/Home Assistant client
-  -> video worker                  forked per video call
+/etc/init.d/rcS
+  -> mounts /usr from mtd4 cramfs
+  -> mounts /mnt from mtd5 jffs2
+  -> /usr/run.sh
+       -> GPIO and LED setup
+       -> kernel modules
+       -> WiFi station setup from /mnt/mtd/wpa_supplicant.conf
+       -> Dropbear SSH
+       -> short Sofia warmup for video hardware
+       -> app_watchdog.sh wibox-media-daemon /usr/bin/wibox-media-daemon
+       -> optional /mnt/mtd/post.sh
 ```
 
-Data flow:
+Sofia is still used once per boot to initialize hardware state that the D1 video
+capture path depends on. It is stopped after the warmup. It is not used per
+call.
+
+## Runtime Ownership
+
+`wibox-media-daemon` is the only packaged media runtime.
+
+It owns:
+
+- intercom serial state on `/dev/ttySGK1`;
+- SIP signaling on UDP `5060` by default;
+- PCMA RTP audio on UDP `8000` by default;
+- optional H.264 RTP video on UDP `8002` by default;
+- direct GADI audio hardware setup and teardown;
+- D1 video worker lifecycle;
+- DTMF door unlock from RTP telephone-event and SIP INFO;
+- MQTT/Home Assistant discovery, commands and state;
+- firmware update checks and install requests;
+- Prometheus `/metrics` and `/healthz`.
+
+## Call Flow
+
+Doorbell-originated call:
 
 ```text
-/dev/ttySGK1
-  ^      ^
-  |      |
-  |      +-- wibox-media-daemon: START_CALL, STOP_CALL, UNLOCK_DOOR
-  |
-  +--------- wibox-media-daemon: ALARM_REPORT, call state, MQTT actions
-
-/tmp/pipe_sip --> wibox-media-daemon
-
-wibox-media-daemon <--> GADI AI/AO audio
-wibox-media-daemon <--> SIP/RTP audio
-wibox-media-daemon  --> video worker <--> RTP H.264 video
-
-wibox-media-daemon <--> MQTT/Home Assistant
+/dev/ttySGK1 ALARM_REPORT or PUSH_STATE_0
+  -> media/state = ringing
+  -> SIP INVITE to outgoing_call_target
+  -> SIP established
+  -> START_CALL to /dev/ttySGK1
+  -> audio RTP starts
+  -> video worker starts if negotiated and video_enabled=1
+  -> media/state = established
 ```
 
-## Current Problems
-
-- `Sofia_temp.sh` is still required once per boot as a hardware warmup.
-- Video still runs in a daemon-forked child for GADI/ioctl crash containment.
-- `/mnt/mtd/sip_media.conf` keeps the historical config filename, but the only
-  packaged runtime binary is `wibox-media-daemon`.
-- Persistent flashing is intentionally guarded; the current WiBox runtime can
-  be tested from `/tmp` before writing `mtd4`.
-
-## Target Runtime
-
-The target production shape is the current daemon model, with the Sofia warmup
-removed once VI/VENC init is fully replicated:
+Hangup/timeout:
 
 ```text
-run.sh
-  -> Sofia warmup                  temporary, until replicated fully
-  -> app_watchdog.sh wibox-media-daemon
-
-wibox-media-daemon
-  - serial /dev/ttySGK1 state machine
-  - SIP signaling
-  - RTP audio
-  - H.264 D1 video capture/RTP
-  - DTMF via RTP telephone-event and SIP INFO
-  - MQTT/Home Assistant discovery and state
-  - doorbell/call/unlock lifecycle
+SIP BYE, SIP failure, HANG_UP or CMD_STOP_RING
+  -> video worker stops
+  -> audio stops
+  -> STOP_CALL when an established panel context exists
+  -> media/state = idle
 ```
 
-The daemon owns serial, SIP, audio, video worker lifecycle, DTMF and MQTT.
+Door unlock:
+
+```text
+DTMF # or MQTT door/open/set=PRESS
+  -> FB 12 01 1E to /dev/ttySGK1
+  -> door/unlocked pulses ON then OFF
+```
+
+## MQTT / Home Assistant
+
+The daemon contains a small native MQTT 3.1.1 client. It does not package or
+spawn `mosquitto_pub` or `mosquitto_sub`.
+
+Default base topic:
+
+```text
+wibox/<hostname>
+```
+
+Primary entities:
+
+```text
+button.open_door
+sensor.media_state
+sensor.firmware_version
+sensor.firmware_commit
+sensor.firmware_build_timestamp
+binary_sensor.door_unlocked
+sensor.wifi_rssi
+switch.video_enabled
+binary_sensor.firmware_update_available
+sensor.firmware_update_version
+button.firmware_update_refresh
+button.firmware_update_install
+```
+
+`media_state` is the high-level state for automation:
+
+```text
+idle
+ringing
+established
+```
+
+Older intermediate sensors such as `call_active`, `sip_call_active`,
+`video_active`, `last_ring` and `last_unlock` are intentionally cleared from
+retained MQTT discovery/state.
+
+## Firmware Updates
+
+Routine updates are handled by `/usr/bin/firmware_update`.
+
+`wibox-media-daemon` checks GitHub releases at startup and roughly once per day.
+Home Assistant can force a check with `Firmware Update Refresh` and start an
+install with `Firmware Update Install`.
+
+The install button is disabled unless an update is available. After an install
+request is accepted, the daemon immediately disables the button and ignores
+duplicate install requests while the updater is running.
+
+## Prometheus
+
+When enabled, the daemon listens on port `9617` by default:
+
+```text
+GET /healthz
+GET /metrics
+```
+
+Metrics include build metadata, uptime, MQTT connection state, media state,
+ring/unlock/call counters, video state and WiFi RSSI.
 
 ## LED Policy
 
-Current LED ownership stays in `run.sh` because those LEDs describe boot and
-network health before the daemon exists:
+LEDs are currently owned by `run.sh`, not the daemon:
 
 ```text
-red   booting or WiFi failure
-off   WiFi setup in progress
-green WiFi associated and DHCP succeeded
-blue  production boot complete, daemon started
+red    booting or WiFi failure
+off    WiFi setup in progress
+green  WiFi associated and DHCP succeeded
+blue   production boot complete and daemon started
 ```
 
-Do not move this initial GPIO setup into the daemon yet. `gpio.sh` also
-initializes board lines that must be ready before media startup, including the
-audio chip enable line on GPIO 18.
+`gpio.sh` also initializes board lines that must be ready before media startup,
+including the audio chip enable line on GPIO 18.
 
-If we later want call-state LEDs, add a daemon-owned GPIO module with an
-explicit priority model instead of overloading `wifi_led()`:
+## Persistent Files
 
 ```text
-boot/network state  handled by run.sh until daemon starts
-runtime idle        blue
-ringing             blinking blue or green
-active call         green
-error/media fault   red
+/mnt/mtd/wpa_supplicant.conf   WiFi station config, required before first flash
+/mnt/mtd/sip_media.conf        daemon runtime config
+/mnt/mtd/dropbear/             SSH host keys
+/mnt/mtd/post.sh               optional local boot hook
 ```
 
-That should be a separate change with device-side visual verification.
+`/tmp` and `/var` are RAM-backed and disappear on reboot.
 
-## Home Assistant Model
+## Build Artifacts
 
-Expose state reactively. Do not expose manual `start_call` or `stop_call`
-buttons as normal user controls.
+The build starts from `mtd4`, extracts it into `cramfs/`, applies scripts from
+`scripts/`, copies `include/`, then packs `release/latest`.
 
-Entities:
+The production image should contain:
 
 ```text
-button.wibox_open_door
-sensor.wibox_media_state
-sensor.wibox_firmware_version
-sensor.wibox_firmware_commit
-sensor.wibox_firmware_build_timestamp
-binary_sensor.wibox_door_unlocked
-sensor.wibox_wifi_rssi
-switch.wibox_video_enabled
+/usr/bin/wibox-media-daemon
+/usr/bin/firmware_update
+/usr/bin/app_watchdog.sh
+/usr/run.sh
+/usr/etc/sip_media.conf.default
+/usr/etc/wibox-release
 ```
 
-Primary MQTT command:
-
-```text
-wibox/<id>/door/open/set = PRESS
-```
-
-Internal behavior:
-
-```text
-open_door()
-  if call_active:
-      unlock_door()
-  else if panel_requires_call_context:
-      start_call_context()
-      wait until ready or short delay
-      unlock_door()
-      stop_call_context()
-```
-
-Call state is reactive:
-
-```text
-ALARM_REPORT from serial
-  -> ringing=true
-  -> optionally place outgoing SIP call
-
-SIP incoming/outgoing established
-  -> START_CALL to panel
-  -> media active
-
-SIP BYE, serial hangup or timeout
-  -> STOP_CALL if needed
-  -> media stopped
-
-DTMF # or MQTT open_door
-  -> unlock_door()
-  -> pulse door_unlocked
-```
-
-## Migration Phases
-
-Each phase must keep the previous working behavior verified before moving on.
-
-Current verification targets:
-
-```text
-make test            host-side native MQTT regression test
-make verify-image    extract release/latest and validate firmware contents
-make verify-device   verify active WiBox daemon checksum and MQTT state
-make verify          run test + verify-image + verify-device
-```
-
-`verify-image` checks that the generated cramfs contains the expected daemon,
-default config, runtime libraries and boot script, and that legacy web/script
-runtime artifacts are absent. `verify-device` reads `/mnt/mtd/sip_media.conf`
-from the WiBox, verifies the active daemon executable checksum against the
-local build, then validates the retained Home Assistant MQTT discovery/state
-model against the configured broker.
-
-### Phase 0: Lock Current Working Baseline
-
-Status: complete.
-
-Evidence:
-- MicroSIP call shows audio and video.
-- DTMF `#` works in automatic mode after negotiating `telephone-event/8000`.
-- `video_enabled=1` default exists; setting it to `0` disables video SDP and
-  prevents `video_rtp_bridge` launch.
-- `make build-media` compiles media artifacts.
-
-### Phase 1: Create `wibox-media-daemon` Shell
-
-Goal:
-- Rename/evolve `sip_media` into `wibox-media-daemon` as the owner of media and
-  intercom state.
-- Remove compatibility binaries and wrappers from the production image.
-
-Implementation:
-- Build `src/sip_media` as `wibox-media-daemon`.
-- Keep the existing `/mnt/mtd/sip_media.conf` config name for persistent
-  upgrade compatibility.
-
-Verification:
-- Build succeeds.
-- Firmware includes `/usr/bin/wibox-media-daemon`.
-- Existing SIP audio/video/DTMF call still works on WiBox.
-- `video_enabled=0` still suppresses video.
-
-### Phase 2: Move Serial Listener Into Daemon
-
-Goal:
-- Daemon reads `/dev/ttySGK1` and handles:
-  - `ALARM_REPORT`
-  - `START_CALL`
-  - `HANG_UP`
-  - `CMD_STOP_RING`
-- Daemon emits the same logical states that used to come from helper scripts.
-- No separate `listener.sh` process in the production image.
-
-Implementation:
-- `wibox-media-daemon` opens `/dev/ttySGK1` when
-  `serial_listener_enabled=1`.
-- `ALARM_REPORT` triggers the same outgoing SIP call path as the legacy
-  `/tmp/pipe_sip` `DING` message.
-- `/tmp/pipe_sip` also accepts `UART FB 11 00 1C` style injected frames as a
-  local test API.
-- `HANG_UP` and `CMD_STOP_RING` terminate an active SIP call.
-- `run.sh` starts only `wibox-media-daemon` under `app_watchdog.sh`.
-- MQTT/Home Assistant publication remains in Phase 3.
-
-Verification:
-- Doorbell press triggers SIP call from the daemon.
-- SIP incoming call still starts panel media context.
-- Hangup and timeout clear state and stop media.
-- DTMF/MQTT open door still unlocks.
-
-### Phase 3: Move MQTT/Home Assistant Into Daemon
-
-Goal:
-- Replace `listener_mqtt.sh`, `mqtt_config_homeassistant.sh`,
-  `heartbeat_mqtt.sh` and `mqtt_wifi_stats.sh` with daemon MQTT logic.
-- Publish Home Assistant discovery for the target entity model.
-- Expose one high-level door open action.
-
-Verification:
-- Home Assistant discovers entities.
-- `button.open_door` performs the full required intercom sequence.
-- Sensors update on ring, call start, call end, unlock and video state.
-- MQTT reconnect/reboot behavior is sane.
-
-Implementation:
-- `wibox-media-daemon` owns MQTT/Home Assistant discovery and state publishing.
-- MQTT transport is implemented in the daemon with a built-in MQTT 3.1.1
-  client over plain TCP; no `mosquitto_pub/sub` binaries are packaged.
-- The daemon publishes the target Home Assistant model:
-  `button.open_door`, `sensor.media_state`, firmware metadata,
-  `binary_sensor.door_unlocked`, WiFi RSSI and `switch.video_enabled`.
-- The only primary door command is `wibox/<id>/door/open/set = PRESS`.
-- `video/enabled/set` updates the in-memory per-call video flag.
-- If the broker is unavailable or rejects authentication, the daemon reconnects
-  without spawning helper processes.
-- Legacy scripts are removed from the production image in Phase 6.
-
-Verification:
-- `make build-media` succeeds.
-- WiBox fake-client test published Home Assistant discovery and initial state.
-- WiBox fake-client test consumed `video/enabled/set OFF` and updated daemon
-  state without crashing.
-- Real broker verification passed after credentials/ACL were corrected:
-  Home Assistant discovery topics are retained for all WiBox entities, runtime
-  state is published under `wibox/IDS7938jrvc/#`, and
-  `video/enabled/set OFF/ON` is consumed by the daemon.
-
-### Phase 4: Integrate Video Worker
-
-Goal:
-- Move `video_rtp_bridge` logic into the daemon or a daemon-owned module.
-- Keep per-call isolation only if it is proven useful for crash containment.
-
-Implementation:
-- Added `src/sip_media/video_worker.c` as a daemon-linked wrapper around the
-  verified D1 H.264 capture path.
-- `wibox-media-daemon` still forks per call, but the child executes the
-  in-process video worker function instead of `execl()`ing
-  `/usr/bin/video_rtp_bridge`.
-- `video_rtp_bridge` remains available as a standalone source/debug tool, but
-  the firmware runtime no longer packages `include/bin/video_rtp_bridge`.
-- The fork boundary is intentionally retained because the GADI/ioctl path is
-  complex and has prior crash risk; ownership is now daemon-controlled.
-- `/tmp/pipe_sip` supports `VIDEO_TEST <ip> <port> <seconds>` for bounded local
-  D1 worker tests without a SIP peer.
-
-Verification:
-- D1 `stream_id==0` RTP H.264 works.
-- Long call cleanup works.
-- `video_enabled=0` keeps video fully disabled.
-
-Evidence:
-- `make build-media` links `wibox-media-daemon` with `libadi.a`.
-- Real MicroSIP call started `Started in-daemon video worker`, captured and
-  sent D1 `stream_id == 0` frames, accepted DTMF `#`, and cleaned up on BYE.
-- `VIDEO_TEST 192.168.0.183 4014 5` captured `stream_id == 0` frames and
-  stopped the worker/panel context cleanly.
-
-### Phase 5: Integrate Audio Bridge
-
-Goal:
-- Move `audio_bridge` into the daemon and remove audio pipes.
-- Own audio hardware and RTP timing from one event loop/thread model.
-
-Implementation:
-- Added `src/sip_media/audio_hw.c` as a direct GADI audio hardware module.
-- `wibox-media-daemon` initializes GADI AI/AO and AP/AEC when an audio session
-  starts, then the existing RTP threads read AI frames and write AO frames
-  directly.
-- The firmware runtime no longer packages or starts `/usr/bin/audio_bridge`.
-- The named-pipe handoff was removed from the active audio path; legacy
-  `audio_ai_pipe`, `audio_ao_pipe`, `audio_bridge_pipe` and pipe retry config
-  keys are accepted but ignored for old `/mnt/mtd/sip_media.conf` files.
-- `libap.so` is now packaged for the daemon because direct audio uses the
-  imported AP/AEC path.
-
-Verification:
-- `make build-media` links `wibox-media-daemon` with direct audio hardware
-  support and `libap.so`; `include/bin/audio_bridge` is absent.
-- WiBox smoke test starts only one `wibox-media-daemon` process; there is no
-  `audio_bridge` or `video_rtp_bridge` runtime process.
-- No `/tmp/audio_from_intercom` or `/tmp/audio_to_intercom` files are created.
-- `AUDIO_TEST 192.168.0.183 4012 5` starts the panel context, initializes
-  GADI/AEC directly, sends 248 RTP audio packets / 39,680 payload bytes, then
-  disables the audio chip and stops cleanly.
-- `VIDEO_TEST 192.168.0.183 4014 8` still captures D1 `stream_id == 0` frames
-  after direct audio integration.
-
-Remaining:
-- None. Real MicroSIP call validation passed on the direct audio build.
-
-### Phase 6: Remove Web UI and Legacy Scripts
-
-Goal:
-- Remove unused web UI from the generated image.
-- Remove legacy helper scripts after daemon replacement is verified.
-
-Verification:
-- Firmware boots without web UI/scripts.
-- SSH and MQTT/Home Assistant remain usable.
-- No boot errors from missing files.
-
-Implementation:
-- Removed web UI files from `include/web`.
-- Removed legacy helper scripts and packaged `mosquitto_pub/sub` clients from
-  the generated image.
-- Removed the mosquitto-client build patch; MQTT is now daemon-native.
-
-Verification:
-- `make build-media` succeeds with the native MQTT client.
-- `make build` produces an image with no web UI, `listener*.sh`,
-  `mqtt_*.sh`, `heartbeat_mqtt.sh` or `mosquitto_*` files.
-- Local MQTT mock test exercises CONNECT, SUBSCRIBE, retained state publish,
-  Home Assistant discovery publish, `door/open/set` and `video/enabled/set`.
-- `make verify-image` extracts `release/latest`, confirms the packaged daemon
-  checksum matches `include/bin/wibox-media-daemon`, checks the boot script and
-  default config, and rejects legacy runtime artifacts.
-- `make verify-device` passes against the real WiBox and broker using the
-  device's `/mnt/mtd/sip_media.conf`, with retained discovery/state validated
-  for the current Home Assistant model.
-
-## Production Invariants
-
-- Only one runtime owns `/dev/ttySGK1`.
-- Home Assistant receives state; it does not orchestrate serial command
-  sequences.
-- Door unlock is a single high-level operation.
-- Video is optional by config and defaults to enabled.
-- Sofia warmup is once per boot only until the remaining VI/VENC init is
-  replicated.
+It should not contain legacy listener scripts, web UI runtime scripts,
+`mosquitto_*`, `ipctool`, SSH client tools, `audio_bridge`,
+`video_rtp_bridge`, `sip_media`, or updater shell wrappers.

@@ -1,84 +1,36 @@
-# SIP Media + D1 Video Media
+# Runtime
 
-This is the current integration path for replacing Sofia per call while keeping
-the one-time Sofia boot warmup.
-
-## Components
-
-- `src/sip_media/`: current source directory for `wibox-media-daemon`, the
-  SIP/RTP media app. The directory keeps its historical name, but the packaged
-  runtime binary is only `wibox-media-daemon`.
-- `src/sip_media/audio_hw.c`: direct GADI audio hardware module. SIP RTP
-  threads read A-law frames from AI and send remote RTP payloads to AO without
-  named pipes.
-- `src/sip_media/video_worker.c`: in-daemon D1 H.264 RTP worker. It embeds the
-  verified `src/video_rtp_bridge/` capture path and runs in a per-call child
-  process for GADI/ioctl crash containment.
-- `src/audio_bridge/`: retained as the source/debug copy of the imported
-  `wibox-audio` bridge, not as a firmware runtime binary.
-- `src/video_rtp_bridge/`: retained as a standalone research/debug tool, not as
-  a firmware runtime binary.
-
-Runtime processes:
-
-```text
-wibox-media-daemon  <-> GADI AI/AO audio hardware
-wibox-media-daemon  <-> RTP audio PCMA/8000 on port 8000
-wibox-media-daemon  ->  forks in-daemon video worker when SDP has a remote video port
-video worker        -> RTP H.264/90000 on port 8002
-wibox-media-daemon  <-> MQTT/Home Assistant over native MQTT 3.1.1 TCP client
-```
-
-## Call Flow
-
-1. Sofia warms up the video hardware once after boot.
-2. Sofia exits.
-3. `wibox-media-daemon` runs under `app_watchdog.sh`, which restarts it if it
-   exits and rotates `/var/log/wibox-media-daemon.log`.
-4. Doorbell `ALARM_REPORT` is read directly from `/dev/ttySGK1` by
-   `wibox-media-daemon`. The legacy `/tmp/pipe_sip` `DING` trigger remains for
-   manual testing.
-5. `wibox-media-daemon` sends SIP INVITE with:
-   - `m=audio ... RTP/AVP 8`
-   - `m=video ... RTP/AVP 96`
-6. When the call is established:
-   - `wibox-media-daemon` sends `START_CALL` to `/dev/ttySGK1`;
-   - audio threads start direct GADI AI/AO plus PCMA RTP;
-   - the in-daemon video worker starts D1 capture and sends H.264 RTP.
-7. On hangup:
-   - `wibox-media-daemon` stops the video worker child;
-   - audio threads stop;
-   - `STOP_CALL` is sent to `/dev/ttySGK1`.
-
-## Build
-
-```sh
-make build-media
-make build
-```
-
-The in-daemon video worker links `libadi.a`; `SDK_DIR` defaults to
-`$HOME/config/GK710X_LinuxSDK_v2.0.0`.
-The direct audio path needs `libap.so`, which is copied from `SDK_DIR` into the
-firmware libraries. `make build` runs `make build-media` before packing the
-cramfs image.
+`wibox-media-daemon` is the SIP, media, intercom, MQTT and update runtime.
 
 ## Configuration
 
-Defaults are installed to `/etc/*.default` and copied to `/mnt/mtd` on first
-boot if persistent configs do not exist.
+Persistent config:
 
-Relevant `/mnt/mtd/sip_media.conf` values:
+```text
+/mnt/mtd/sip_media.conf
+```
+
+Default config in the image:
+
+```text
+/usr/etc/sip_media.conf.default
+```
+
+Key options:
 
 ```ini
+outgoing_call_target=sip:1000@192.168.0.31:5060
+outgoing_call_timeout=60
+sip_port=5060
 rtp_port=8000
+
 video_enabled=1
 video_rtp_port=8002
 video_payload_type=96
+
 serial_listener_enabled=1
 intercom_device=/dev/ttySGK1
-audio_buffer_size=160
-audio_chip_gpio=18
+
 mqtt_enabled=1
 mqtt_host=127.0.0.1
 mqtt_user=
@@ -87,68 +39,188 @@ mqtt_homeassistant_prefix=homeassistant
 mqtt_base_topic=
 mqtt_device_id=
 mqtt_device_name=
+
 firmware_update_enabled=1
 firmware_update_repo=segator/wibox-media
+
+prometheus_enabled=1
+prometheus_port=9617
+
+audio_buffer_size=160
+audio_chip_gpio=18
 ```
 
-## Local Control API
+Leave `mqtt_base_topic`, `mqtt_device_id` and `mqtt_device_name` empty unless
+you need stable custom names. The daemon derives them from the WiBox hostname.
 
-`wibox-media-daemon` keeps `/tmp/pipe_sip` as a local control FIFO. It accepts:
+## SIP And Media
+
+Outgoing doorbell calls are sent to `outgoing_call_target`.
+
+The daemon advertises:
+
+```text
+audio: PCMA/8000
+video: H.264/90000, payload type 96 by default
+DTMF:  telephone-event/8000
+```
+
+When a SIP call is established, the daemon sends `START_CALL` to the intercom
+MCU, starts direct GADI audio, and starts the D1 video worker if video was
+negotiated and `video_enabled=1`.
+
+On hangup or failure, it stops media and sends `STOP_CALL` when needed.
+
+## Intercom Serial
+
+Device:
+
+```text
+/dev/ttySGK1
+```
+
+Important commands:
+
+```text
+START_CALL   FB 14 01 20
+STOP_CALL    FB 14 00 1F
+OPEN_DOOR    FB 12 01 1E
+```
+
+Important incoming frames:
+
+```text
+ALARM_REPORT  FB 11 00 1C
+PUSH_STATE_0  FB 19 00 24
+HANG_UP       FB 13 00 1E / FB 13 01 1F
+STOP_RING     FB 23 00 2E
+```
+
+See [UART Codes](codes.md) for the full list.
+
+## Home Assistant / MQTT
+
+The daemon publishes Home Assistant discovery using MQTT retained config
+messages.
+
+Default base topic:
+
+```text
+wibox/<hostname>
+```
+
+Commands:
+
+```text
+wibox/<hostname>/door/open/set = PRESS
+wibox/<hostname>/video/enabled/set = ON|OFF
+wibox/<hostname>/firmware/update/check/set = PRESS
+wibox/<hostname>/firmware/update/install/set = PRESS
+```
+
+State topics:
+
+```text
+wibox/<hostname>/media/state
+wibox/<hostname>/door/unlocked
+wibox/<hostname>/video/enabled
+wibox/<hostname>/wifi/rssi
+wibox/<hostname>/firmware/version
+wibox/<hostname>/firmware/commit
+wibox/<hostname>/firmware/build_timestamp
+wibox/<hostname>/firmware/update/available
+wibox/<hostname>/firmware/update/version
+wibox/<hostname>/firmware/update/install/availability
+```
+
+`media/state` values:
+
+```text
+idle
+ringing
+established
+```
+
+`door/unlocked` is a short pulse: `ON` then `OFF`.
+
+The update install button is only available when an update is available. It is
+set unavailable immediately after an install request is accepted.
+
+## Prometheus
+
+If `prometheus_enabled=1`, scrape:
+
+```text
+http://<wibox-ip>:9617/metrics
+```
+
+Health endpoint:
+
+```text
+http://<wibox-ip>:9617/healthz
+```
+
+Current metric families:
+
+```text
+wibox_info
+wibox_uptime_seconds
+wibox_health
+wibox_mqtt_connected
+wibox_call_active
+wibox_sip_call_active
+wibox_video_active
+wibox_video_enabled
+wibox_ringing
+wibox_rings_total
+wibox_calls_started_total
+wibox_video_sessions_started_total
+wibox_door_unlocks_total
+wibox_last_ring_timestamp_seconds
+wibox_last_unlock_timestamp_seconds
+wibox_wifi_rssi_dbm
+```
+
+Some Prometheus gauges expose lower-level runtime state for monitoring even
+though Home Assistant intentionally presents only the simpler `media_state`.
+
+## Local Test API
+
+The daemon creates a FIFO:
+
+```text
+/tmp/pipe_sip
+```
+
+Examples:
 
 ```sh
 echo DING > /tmp/pipe_sip
 echo 'UART FB 11 00 1C' > /tmp/pipe_sip
+echo 'UART FB 19 00 24' > /tmp/pipe_sip
 echo 'AUDIO_TEST 192.168.0.183 4012 5' > /tmp/pipe_sip
 echo 'VIDEO_TEST 192.168.0.183 4014 5' > /tmp/pipe_sip
 ```
 
-`DING` triggers an outgoing call directly. `UART ...` injects a 4-byte panel
-frame into the same handler used by `/dev/ttySGK1`, useful for testing
-`ALARM_REPORT`, `HANG_UP`, and `CMD_STOP_RING` without pressing the physical
-button.
-`VIDEO_TEST` starts the panel call context, runs the embedded D1 video worker
-for a bounded local test, and then stops the panel context.
-`AUDIO_TEST` starts the panel call context, starts direct GADI audio RTP for a
-bounded local test, and then stops audio and the panel context.
+`DING` simulates a doorbell. `UART ...` injects a four-byte serial frame into
+the same handler used by `/dev/ttySGK1`.
 
-## Verification Done
+`AUDIO_TEST` and `VIDEO_TEST` are bounded diagnostics. They start the panel call
+context, run media to the supplied IP/port for the requested number of seconds,
+then stop the panel context.
 
-- `wibox-media-daemon` compiles with direct GADI audio and embedded video.
-- Firmware image builds with all binaries and runtime libraries.
-- Real MicroSIP call verified with audio and H.264 video.
-- Real MicroSIP call verified the in-daemon video worker: `stream_id == 0`
-  frames were captured and sent, DTMF `#` unlocked the door, and BYE stopped
-  video/audio cleanly.
-- DTMF door unlock works in MicroSIP automatic mode after negotiating
-  `telephone-event/8000`; SIP INFO is also accepted as a fallback.
-- WiBox smoke test:
-  - `wibox-media-daemon` starts, binds SIP/RTP, creates `/tmp/pipe_sip`,
-    opens `/dev/ttySGK1`, and exits cleanly.
-  - Control FIFO can inject UART frames for local testing.
-  - MQTT fake-client test publishes Home Assistant discovery and handles
-    `video/enabled/set`.
-  - `AUDIO_TEST` starts GADI/AEC directly, sends RTP audio packets, and stops
-    audio cleanly without creating `/tmp/audio_from_intercom` or
-    `/tmp/audio_to_intercom`.
-  - `VIDEO_TEST` starts the embedded worker and captures D1 `stream_id == 0`.
-- Real MicroSIP call on the direct GADI audio build verified audio, H.264
-  video, automatic-mode DTMF `#`, door unlock and cleanup on BYE.
-- Local MQTT mock test verifies the native MQTT client without mosquitto
-  binaries.
-- `make verify` passes end-to-end for the current development state: local
-  MQTT regression, generated firmware image content, active WiBox daemon
-  checksum, and real broker retained discovery/state.
-- Real MQTT broker/Home Assistant verification passed:
-  - retained discovery topics exist for 10 WiBox entities;
-  - retained state topics show the WiBox online and idle;
-  - call/SIP/video active sensors use plain ON/OFF semantics, not
-    connectivity/disconnected wording;
-  - WiFi RSSI is retained from `/usr/sbin/wpa_cli`;
-  - `video/enabled/set OFF/ON` commands are consumed by the daemon.
+## Logs
 
-## Still To Verify
+Runtime log:
 
-- H.264 RTP compatibility with Asterisk/WebRTC/SIP-HASS.
-- Long-call stability and cleanup around the 90s MCU auto-stop behavior.
-- Daylight video quality; low light adds analog sensor/CVBS noise that bitrate
-  cannot remove.
+```text
+/var/log/wibox-media-daemon.log
+```
+
+Firmware update log:
+
+```text
+/tmp/firmware_update.log
+```
+
+Both are RAM-backed and reset on reboot.
