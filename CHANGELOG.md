@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.9](https://github.com/segator/wibox-media/compare/v0.4.8...v0.4.9) (2026-07-01)
+
+
+### Bug Fixes
+
+* make firmware updates use mtd erase path ([a705ef0](https://github.com/segator/wibox-media/commit/a705ef0dd3529b5cb41ac3081fd339f6da258d99))
+
 ## [0.4.8](https://github.com/segator/wibox-media/compare/v0.4.7...v0.4.8) (2026-07-01)
 
 

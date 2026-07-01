@@ -23,13 +23,13 @@ The main runtime is `wibox-media-daemon`.
 ## Current Release
 
 <!-- x-release-please-start-version -->
-[v0.4.8](https://github.com/segator/wibox-media/releases/tag/v0.4.7)
+[v0.4.9](https://github.com/segator/wibox-media/releases/tag/v0.4.7)
 <!-- x-release-please-end -->
 
 Download the latest release image:
 
 ```bash
-VERSION="v0.4.8"  # x-release-please-version
+VERSION="v0.4.9"  # x-release-please-version
 wget -O wibox-media.img "https://github.com/segator/wibox-media/releases/download/${VERSION}/wibox-media-${VERSION}.img"
 ```
 
