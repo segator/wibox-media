@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/segator/wibox-media/compare/v0.5.0...v0.5.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* block duplicate firmware update installs ([71e17a2](https://github.com/segator/wibox-media/commit/71e17a2f8c62fe27e0b03f5bd93672ccaaf19392))
+
 ## [0.5.0](https://github.com/segator/wibox-media/compare/v0.4.10...v0.5.0) (2026-07-01)
 
 
