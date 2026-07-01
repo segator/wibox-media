@@ -214,6 +214,7 @@ def main():
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_commit/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_build_timestamp/config",
         f"{MQTT_HA_PREFIX}/button/{HA_ID}_firmware_update_install/config",
+        f"{MQTT_HA_PREFIX}/button/{HA_ID}_firmware_update_refresh/config",
         f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_firmware_update_available/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_update_version/config",
         f"{MQTT_HA_PREFIX}/binary_sensor/{HA_ID}_door_unlocked/config",
@@ -261,6 +262,11 @@ def main():
         seen, "button", "firmware_update_install", f"{MQTT_BASE_TOPIC}/firmware/update/install/set",
         expected_icon="mdi:update",
         expected_availability_topic=f"{MQTT_BASE_TOPIC}/firmware/update/install/availability"
+    )
+    assert_command_config(
+        seen, "button", "firmware_update_refresh", f"{MQTT_BASE_TOPIC}/firmware/update/check/set",
+        expected_icon="mdi:refresh",
+        expected_availability_topic=MQTT_BASE_TOPIC
     )
     assert_config(seen, "binary_sensor", "firmware_update_available", f"{MQTT_BASE_TOPIC}/firmware/update/available",
                   expected_icon="mdi:update")

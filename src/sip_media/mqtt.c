@@ -494,6 +494,26 @@ static void publish_firmware_update_button_config(void) {
     mqtt_publish_raw(topic, payload, 1);
 }
 
+static void publish_firmware_update_refresh_button_config(void) {
+    char topic[256];
+    char command_topic[256];
+    char uid[192];
+    char dev[512];
+    char payload[1536];
+
+    discovery_topic(topic, sizeof(topic), "button", "firmware_update_refresh");
+    topic_path(command_topic, sizeof(command_topic), "firmware/update/check/set");
+    unique_id(uid, sizeof(uid), "firmware_update_refresh");
+    device_json(dev, sizeof(dev));
+
+    snprintf(payload, sizeof(payload),
+             "{\"name\":\"Firmware Update Refresh\",\"unique_id\":\"%s\","
+             "\"command_topic\":\"%s\",\"payload_press\":\"PRESS\","
+             "\"availability_topic\":\"%s\",\"icon\":\"mdi:refresh\",%s}",
+             uid, command_topic, mqtt_state.base_topic, dev);
+    mqtt_publish_raw(topic, payload, 1);
+}
+
 static void publish_firmware_update_binary_sensor_config(void) {
     char topic[256];
     char state_topic[256];
@@ -607,6 +627,8 @@ static void clear_firmware_update_entities(void) {
     char topic[256];
 
     discovery_topic(topic, sizeof(topic), "button", "firmware_update_install");
+    clear_retained_topic(topic);
+    discovery_topic(topic, sizeof(topic), "button", "firmware_update_refresh");
     clear_retained_topic(topic);
     discovery_topic(topic, sizeof(topic), "binary_sensor", "firmware_update_available");
     clear_retained_topic(topic);
@@ -745,6 +767,7 @@ void mqtt_publish_discovery(void) {
     clear_legacy_entities();
     if (mqtt_state.firmware_update_enabled) {
         publish_firmware_update_button_config();
+        publish_firmware_update_refresh_button_config();
         publish_firmware_update_binary_sensor_config();
         publish_firmware_update_version_config();
     } else {
@@ -889,6 +912,15 @@ static void handle_mqtt_message(const char* topic, const char* payload) {
         if (payload_is_on(payload)) {
             printf("%s: firmware update install requested\n", MQTT_FILE);
             start_firmware_update_install();
+        }
+        return;
+    }
+
+    topic_path(expected, sizeof(expected), "firmware/update/check/set");
+    if (strcmp(topic, expected) == 0) {
+        if (payload_is_on(payload) && mqtt_state.firmware_update_enabled) {
+            printf("%s: firmware update refresh requested\n", MQTT_FILE);
+            firmware_update_check_and_publish();
         }
         return;
     }

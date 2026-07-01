@@ -44,6 +44,7 @@ When firmware updates are enabled, the daemon publishes:
 
 - `Firmware Update Available`: binary sensor, `ON` when GitHub has a newer release.
 - `Firmware Update Version`: text sensor with the latest release tag.
+- `Firmware Update Refresh`: button that checks GitHub immediately without installing.
 - `Firmware Update Install`: button that launches `/usr/bin/firmware_update`.
 
 The install button has its own availability topic:
@@ -59,6 +60,10 @@ It is published as:
 
 Home Assistant shows the button disabled while the availability topic is
 `offline`.
+
+The daemon checks for updates when it starts and then roughly once per day.
+Press `Firmware Update Refresh` when you have just published a release and want
+Home Assistant to show the new version immediately without waiting or rebooting.
 
 ## Terminal Usage
 

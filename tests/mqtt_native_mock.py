@@ -161,7 +161,8 @@ def main():
     for topic, payload in published:
         if topic.endswith("_firmware_update_available/config") or \
            topic.endswith("_firmware_update_version/config") or \
-           topic.endswith("_firmware_update_install/config"):
+           topic.endswith("_firmware_update_install/config") or \
+           topic.endswith("_firmware_update_refresh/config"):
             if payload not in ("", None):
                 print("unexpected firmware update discovery publish in disabled test", file=sys.stderr)
                 return 1
