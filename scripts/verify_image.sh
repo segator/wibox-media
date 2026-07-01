@@ -46,6 +46,7 @@ require_absent() {
 }
 
 require_file "bin/wibox-media-daemon"
+require_file "bin/firmware_update"
 require_file "bin/app_watchdog.sh"
 require_file "etc/sip_media.conf.default"
 require_file "etc/wibox-release"
@@ -95,6 +96,8 @@ require_absent "bin/audio_bridge"
 require_absent "bin/video_rtp_bridge"
 require_absent "bin/sip_media"
 require_absent "bin/sofia_trace"
+require_absent "bin/firmware_update.sh"
+require_absent "bin/update_firmware.sh"
 
 echo "[*] Firmware image OK: ${IMAGE}"
 echo "    daemon_md5=${IMAGE_MD5}"

@@ -57,7 +57,7 @@ void config_init_defaults(wibox_config_t* config) {
     config->mqtt_device_id[0] = '\0';
     config->mqtt_device_name[0] = '\0';
     config->firmware_update_enabled = 1;
-    strcpy(config->firmware_update_repo, "aymerici/wibox-media");
+    strcpy(config->firmware_update_repo, "segator/wibox-media");
 
     // Prometheus metrics exporter
     config->prometheus_enabled = 1;
@@ -165,6 +165,9 @@ static int parse_config_line(const char* line, wibox_config_t* config) {
     } else if (strcmp(key, "firmware_update_repo") == 0) {
         strncpy(config->firmware_update_repo, value, sizeof(config->firmware_update_repo) - 1);
         config->firmware_update_repo[sizeof(config->firmware_update_repo) - 1] = '\0';
+        if (strcmp(config->firmware_update_repo, "aymerici/wibox-media") == 0) {
+            strcpy(config->firmware_update_repo, "segator/wibox-media");
+        }
     } else if (strcmp(key, "prometheus_enabled") == 0) {
         config->prometheus_enabled = atoi(value);
     } else if (strcmp(key, "prometheus_port") == 0) {

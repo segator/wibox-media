@@ -809,7 +809,7 @@ static void start_firmware_update_install(void) {
         return;
     }
 
-    rc = system("/usr/bin/firmware_update.sh >/tmp/firmware_update.log 2>&1 &");
+    rc = system("/usr/bin/firmware_update >/tmp/firmware_update.log 2>&1 &");
     if (rc != 0) {
         printf("%s: failed to launch firmware update script rc=%d\n", MQTT_FILE, rc);
     } else {

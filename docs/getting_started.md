@@ -65,7 +65,7 @@ The easiest path is the latest GitHub Release image:
 
 ```bash
 VERSION="v0.4.7"  # x-release-please-version
-wget -O wibox-media.img "https://github.com/aymerici/wibox-media/releases/download/${VERSION}/wibox-media-${VERSION}.img"
+wget -O wibox-media.img "https://github.com/segator/wibox-media/releases/download/${VERSION}/wibox-media-${VERSION}.img"
 ```
 
 To build locally:
@@ -100,14 +100,8 @@ reboot
 Transfer `wibox-media.img` or `release/latest` to `/tmp/update.img` and then run:
 
 ```sh
-/usr/bin/update_firmware.sh
+/usr/bin/firmware_update
 reboot
-```
-
-If you want the guarded install flow instead of flashing by hand, use:
-
-```sh
-/usr/bin/firmware_update.sh
 ```
 
 ## 6. Configure Runtime

@@ -17,6 +17,8 @@ docker run --rm \
   "$BUILD_IMAGE" \
   sh -lc 'export PATH=/opt/4.6.1/usr/bin:$PATH; make clean PROGRAM=wibox-media-daemon && make PROGRAM=wibox-media-daemon WIBOX_VERSION="$WIBOX_VERSION" WIBOX_COMMIT="$WIBOX_COMMIT" WIBOX_BUILD_TIMESTAMP="$WIBOX_BUILD_TIMESTAMP"'
 
+BUILD_IMAGE="$BUILD_IMAGE" scripts/build_firmware_update.sh
+
 mkdir -p include/lib
 cp "$SDK_DIR/install/arm11-gcc-uClibc-linux-GK710XS/lib/libap.so" include/lib/
 

@@ -18,7 +18,7 @@ Use this when Linux boots but networking or startup is broken and you still
 have a shell.
 
 ```sh
-/usr/bin/update_firmware.sh
+/usr/bin/firmware_update
 reboot
 ```
 

@@ -19,6 +19,11 @@ if [ ! -f "${IMAGE}" ]; then
   echo "[!] Missing firmware image: ${IMAGE}" >&2
   exit 1
 fi
+if [ ! -x "include/bin/firmware_update" ]; then
+  echo "[!] Missing updater binary: include/bin/firmware_update" >&2
+  echo "    Run make build first." >&2
+  exit 1
+fi
 
 SIZE=$(stat -L -c "%s" "${IMAGE}")
 LOCAL_MD5=$(md5sum "${IMAGE}" | cut -d" " -f1)
@@ -61,7 +66,15 @@ if [ "${FLASH_DRY_RUN}" = "1" ]; then
   exit 0
 fi
 
-echo "[*] Running /usr/bin/update_firmware.sh"
-sshpass -p "${WIBOX_PASS}" ssh ${SSH_OPTS} "${WIBOX_USER}@${WIBOX_IP}" '/usr/bin/update_firmware.sh'
+echo "[*] Uploading updater helper"
+base64 include/bin/firmware_update | sshpass -p "${WIBOX_PASS}" ssh ${SSH_OPTS} "${WIBOX_USER}@${WIBOX_IP}" '
+set -eu
+base64 -d > /tmp/firmware_update
+chmod +x /tmp/firmware_update
+'
+
+echo "[*] Flashing /dev/mtdblock4 with dd-style write and readback verification"
+sshpass -p "${WIBOX_PASS}" ssh ${SSH_OPTS} "${WIBOX_USER}@${WIBOX_IP}" \
+  "set -eu; /tmp/firmware_update --image /tmp/update.img --expected-md5 '${LOCAL_MD5}' --no-reboot"
 
 echo "[*] Flash verified by updater. Reboot the WiBox to boot the new /usr image."

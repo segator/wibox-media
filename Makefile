@@ -94,7 +94,7 @@ pack:
 # ── cleanup ────────────────────────────────────────────────────────
 clean:
 	rm -f include/sbin/dropbearmulti include/sbin/dropbear include/sbin/dropbearkey include/sbin/dropbearconvert
-	rm -f include/bin/scp include/bin/dbclient
+	rm -f include/bin/scp include/bin/dbclient include/bin/firmware_update
 	rm -f src/sip_media/sip_media src/sip_media/wibox-media-daemon src/sip_media/*.o
 	rm -f src/video_rtp_bridge/video_rtp_bridge
 	rm -rf $(BUILD_DIR) .verify-image-root patch.log 2>/dev/null
