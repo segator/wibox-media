@@ -103,6 +103,8 @@ See [UART Codes](codes.md) for the full list.
 The daemon publishes Home Assistant discovery using MQTT retained config
 messages.
 
+![WiBox Home Assistant device](img/homeassistant.png)
+
 Default base topic:
 
 ```text

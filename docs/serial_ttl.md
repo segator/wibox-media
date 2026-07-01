@@ -21,6 +21,16 @@ minicom -s
 
 The WiBox console is `ttySGK2`.
 
+Use the board photos below to locate the serial pads before wiring the adapter:
+
+![WiBox board front](img/board.jpg)
+
+![WiBox board back](img/backboard.jpg)
+
+Serial header detail:
+
+![WiBox serial pads](img/serial.jpg)
+
 | WiBox board | USB TTL adapter |
 |-------------|-----------------|
 | GND         | GND             |
