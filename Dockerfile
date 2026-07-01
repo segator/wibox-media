@@ -1,11 +1,15 @@
 ARG BASE_IMAGE=wibox-build:latest
+ARG CRAMFS_TOOLS_COMMIT=a95eecbf899479f8b3d65fb2822c5b7cbcdacfdd
 
 # Stage 1: Build cramfs tools on Ubuntu 16.04 (zlib 1.2.8)
 FROM ubuntu:16.04 AS builder
+ARG CRAMFS_TOOLS_COMMIT
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git build-essential zlib1g-dev \
-    && git clone --depth 1 https://github.com/npitre/cramfs-tools.git /tmp/ct \
-    && cd /tmp/ct && make LDFLAGS="-static" \
+    && git clone https://github.com/npitre/cramfs-tools.git /tmp/ct \
+    && cd /tmp/ct \
+    && git checkout "${CRAMFS_TOOLS_COMMIT}" \
+    && make LDFLAGS="-static" \
     && rm -rf /var/lib/apt/lists/*
 
 # Stage 2: Production build image: ARM toolchain, PJProject and cramfs tools.
