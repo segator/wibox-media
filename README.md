@@ -15,6 +15,8 @@ The firmware provides:
 
 The runtime binary is `/usr/bin/wibox-media-daemon`.
 
+![WiBox Home Assistant device](docs/img/homeassistant.png)
+
 ## Credits
 
 This project builds on prior reverse engineering work:
