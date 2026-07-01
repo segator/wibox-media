@@ -59,7 +59,9 @@ It is published as:
 - `offline` when the WiBox is already on the latest release.
 
 Home Assistant shows the button disabled while the availability topic is
-`offline`.
+`offline`. The daemon also switches it to `offline` immediately after accepting
+an install request and ignores duplicate install requests while the updater is
+running.
 
 The daemon checks for updates when it starts and then roughly once per day.
 Press `Firmware Update Refresh` when you have just published a release and want

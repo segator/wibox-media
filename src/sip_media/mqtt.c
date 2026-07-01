@@ -43,6 +43,7 @@ typedef struct {
     char firmware_update_repo[128];
     char firmware_update_version[64];
     int firmware_update_available;
+    int firmware_update_installing;
     time_t firmware_update_last_check;
     mqtt_callbacks_t callbacks;
     void* user_data;
@@ -678,6 +679,11 @@ static int read_command_output(const char* command, char* output, size_t output_
     return output[0] ? 0 : -1;
 }
 
+static void publish_firmware_update_install_availability(void) {
+    int available = mqtt_state.firmware_update_available && !mqtt_state.firmware_update_installing;
+    publish_suffix("firmware/update/install/availability", available ? "online" : "offline", 1);
+}
+
 static void firmware_update_check_and_publish(void) {
     char remote_version[64];
     char download_url[512];
@@ -740,8 +746,7 @@ static void firmware_update_check_and_publish(void) {
     mqtt_state.firmware_update_version[sizeof(mqtt_state.firmware_update_version) - 1] = '\0';
     publish_suffix("firmware/update/version", mqtt_state.firmware_update_version, 1);
     publish_suffix("firmware/update/available", mqtt_state.firmware_update_available ? "ON" : "OFF", 1);
-    publish_suffix("firmware/update/install/availability",
-                   mqtt_state.firmware_update_available ? "online" : "offline", 1);
+    publish_firmware_update_install_availability();
     printf("%s: firmware update check local=%s remote=%s available=%d url=%s\n",
            MQTT_FILE, local_version, remote_version, mqtt_state.firmware_update_available, download_url);
 }
@@ -752,10 +757,18 @@ static void start_firmware_update_install(void) {
     if (!mqtt_state.firmware_update_enabled || !mqtt_state.connected) {
         return;
     }
+    if (mqtt_state.firmware_update_installing) {
+        printf("%s: firmware update install already in progress, ignoring duplicate request\n", MQTT_FILE);
+        return;
+    }
 
+    mqtt_state.firmware_update_installing = 1;
+    publish_firmware_update_install_availability();
     rc = system("/usr/bin/firmware_update >/tmp/firmware_update.log 2>&1 &");
     if (rc != 0) {
         printf("%s: failed to launch firmware update script rc=%d\n", MQTT_FILE, rc);
+        mqtt_state.firmware_update_installing = 0;
+        publish_firmware_update_install_availability();
     } else {
         printf("%s: launched firmware update script\n", MQTT_FILE);
     }
@@ -919,6 +932,10 @@ static void handle_mqtt_message(const char* topic, const char* payload) {
     topic_path(expected, sizeof(expected), "firmware/update/check/set");
     if (strcmp(topic, expected) == 0) {
         if (payload_is_on(payload) && mqtt_state.firmware_update_enabled) {
+            if (mqtt_state.firmware_update_installing) {
+                printf("%s: firmware update refresh ignored while install is in progress\n", MQTT_FILE);
+                return;
+            }
             printf("%s: firmware update refresh requested\n", MQTT_FILE);
             firmware_update_check_and_publish();
         }
@@ -1102,6 +1119,7 @@ int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
     strncpy(mqtt_state.firmware_update_repo, app_config->firmware_update_repo,
             sizeof(mqtt_state.firmware_update_repo) - 1);
     mqtt_state.firmware_update_last_check = 0;
+    mqtt_state.firmware_update_installing = 0;
 
     get_hostname(hostname, sizeof(hostname));
     if (app_config->mqtt_device_id[0]) {
