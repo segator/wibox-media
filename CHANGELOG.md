@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.10](https://github.com/segator/wibox-media/compare/v0.4.9...v0.4.10) (2026-07-01)
+
+
+### Bug Fixes
+
+* disable firmware update button when current ([79089a9](https://github.com/segator/wibox-media/commit/79089a988dc8042356ed83eae47c00812f8ae02c))
+
 ## [0.4.9](https://github.com/segator/wibox-media/compare/v0.4.8...v0.4.9) (2026-07-01)
 
 
