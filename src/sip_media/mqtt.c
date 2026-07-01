@@ -619,54 +619,6 @@ static void clear_firmware_update_entities(void) {
     clear_retained_topic(topic);
 }
 
-static int version_triplet(const char* input, int* major, int* minor, int* patch) {
-    char clean[64];
-    const char* version_start = input;
-
-    if (!input || !major || !minor || !patch) {
-        return -1;
-    }
-
-    if (strncmp(version_start, "wibox-media-", 12) == 0) {
-        version_start += 12;
-    } else {
-        const char* last_dash = strrchr(version_start, '-');
-        if (last_dash && last_dash[1] == 'v') {
-            version_start = last_dash + 1;
-        }
-    }
-
-    while (*version_start == 'v' || *version_start == 'V') version_start++;
-    if (strncmp(version_start, "dev-", 4) == 0) {
-        return -2;
-    }
-    strncpy(clean, version_start, sizeof(clean) - 1);
-    clean[sizeof(clean) - 1] = '\0';
-    if (sscanf(clean, "%d.%d.%d", major, minor, patch) != 3) {
-        return -1;
-    }
-    return 0;
-}
-
-static int version_is_newer(const char* remote, const char* local) {
-    int r0, r1, r2;
-    int l0, l1, l2;
-    int rv;
-    int lv;
-
-    rv = version_triplet(remote, &r0, &r1, &r2);
-    if (rv != 0) {
-        return 0;
-    }
-    lv = version_triplet(local, &l0, &l1, &l2);
-    if (lv != 0) {
-        return 1;
-    }
-    if (r0 != l0) return r0 > l0;
-    if (r1 != l1) return r1 > l1;
-    return r2 > l2;
-}
-
 static int read_command_output(const char* command, char* output, size_t output_size) {
     FILE* fp;
     char line[256];
@@ -700,68 +652,13 @@ static int read_command_output(const char* command, char* output, size_t output_
     return output[0] ? 0 : -1;
 }
 
-static int github_latest_release(const char* repo, char* version, size_t version_size,
-                                 char* download_url, size_t download_url_size) {
-    char command[512];
-    char json[8192];
-    const char* p;
-
-    if (!repo || !repo[0] || !version || version_size == 0 || !download_url || download_url_size == 0) {
-        return -1;
-    }
-
-    snprintf(command, sizeof(command),
-             "wget -qO- 'https://api.github.com/repos/%s/releases/latest' 2>/dev/null",
-             repo);
-    if (read_command_output(command, json, sizeof(json)) != 0) {
-        return -1;
-    }
-
-    p = strstr(json, "\"tag_name\":\"");
-    if (!p) {
-        return -1;
-    }
-    p += strlen("\"tag_name\":\"");
-    {
-        const char* end = strchr(p, '"');
-        size_t len;
-        if (!end) {
-            return -1;
-        }
-        len = (size_t)(end - p);
-        if (len >= version_size) len = version_size - 1;
-        memcpy(version, p, len);
-        version[len] = '\0';
-    }
-
-    p = json;
-    while ((p = strstr(p, "\"browser_download_url\":\"")) != NULL) {
-        const char* start;
-        const char* end;
-        size_t len;
-
-        start = p + strlen("\"browser_download_url\":\"");
-        end = strchr(start, '"');
-        if (!end) {
-            return -1;
-        }
-        len = (size_t)(end - start);
-        if (len >= download_url_size) len = download_url_size - 1;
-        memcpy(download_url, start, len);
-        download_url[len] = '\0';
-        if (strstr(download_url, ".img")) {
-            return 0;
-        }
-        p = end + 1;
-    }
-
-    return -1;
-}
-
 static void firmware_update_check_and_publish(void) {
     char remote_version[64];
     char download_url[512];
     char local_version[64];
+    char status[2048];
+    char* line;
+    char* saveptr;
     FILE* fp;
 
     if (!mqtt_state.firmware_update_enabled || !mqtt_state.connected) {
@@ -786,16 +683,35 @@ static void firmware_update_check_and_publish(void) {
         local_version[sizeof(local_version) - 1] = '\0';
     }
 
-    if (github_latest_release(mqtt_state.firmware_update_repo, remote_version, sizeof(remote_version),
-                              download_url, sizeof(download_url)) != 0) {
+    remote_version[0] = '\0';
+    download_url[0] = '\0';
+    if (read_command_output("/usr/bin/firmware_update --status 2>/dev/null", status, sizeof(status)) != 0) {
         printf("%s: firmware update check failed for repo %s\n", MQTT_FILE,
                mqtt_state.firmware_update_repo);
         return;
     }
 
+    for (line = strtok_r(status, "\n", &saveptr); line; line = strtok_r(NULL, "\n", &saveptr)) {
+        if (strncmp(line, "remote_version=", 15) == 0) {
+            strncpy(remote_version, line + 15, sizeof(remote_version) - 1);
+            remote_version[sizeof(remote_version) - 1] = '\0';
+        } else if (strncmp(line, "local_version=", 14) == 0) {
+            strncpy(local_version, line + 14, sizeof(local_version) - 1);
+            local_version[sizeof(local_version) - 1] = '\0';
+        } else if (strncmp(line, "available=", 10) == 0) {
+            mqtt_state.firmware_update_available = atoi(line + 10) != 0;
+        } else if (strncmp(line, "image_url=", 10) == 0) {
+            strncpy(download_url, line + 10, sizeof(download_url) - 1);
+            download_url[sizeof(download_url) - 1] = '\0';
+        }
+    }
+    if (!remote_version[0]) {
+        printf("%s: firmware update status missing remote version\n", MQTT_FILE);
+        return;
+    }
+
     strncpy(mqtt_state.firmware_update_version, remote_version, sizeof(mqtt_state.firmware_update_version) - 1);
     mqtt_state.firmware_update_version[sizeof(mqtt_state.firmware_update_version) - 1] = '\0';
-    mqtt_state.firmware_update_available = version_is_newer(remote_version, local_version);
     publish_suffix("firmware/update/version", mqtt_state.firmware_update_version, 1);
     publish_suffix("firmware/update/available", mqtt_state.firmware_update_available ? "ON" : "OFF", 1);
     printf("%s: firmware update check local=%s remote=%s available=%d url=%s\n",

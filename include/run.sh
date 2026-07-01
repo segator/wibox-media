@@ -106,16 +106,14 @@ if [ -z "${RUN_SOFIA}" ] || [ "${RUN_SOFIA}" != "0" ]; then
   timeout -t 180 /usr/bin/Sofia_temp.sh
   # sofia does not have Wifi connection and we just got dropped from wifi
   # re-run wifi setup again
-  if [ ! -e "/mnt/mtd/Config/wifi" ]; then
-    killall wpa_supplicant udhcpc
-    wifi_led off
-    if grep -q ssid ${WPA_CONF}; then
-      wpa_supplicant -i wlan0 -c ${WPA_CONF} -B
-      timeout -t 150 udhcpc -i wlan0 -s /var/wifi/udhcpc.conf
-      [ "$?" = 0 ] && wifi_led green || (wifi_led off; /usr/bin/ap_start.sh)
-    else
-      /usr/bin/ap_start.sh
-    fi
+  killall wpa_supplicant udhcpc
+  wifi_led off
+  if grep -q ssid ${WPA_CONF}; then
+    wpa_supplicant -i wlan0 -c ${WPA_CONF} -B
+    timeout -t 150 udhcpc -i wlan0 -s /var/wifi/udhcpc.conf
+    [ "$?" = 0 ] && wifi_led green || (wifi_led off; /usr/bin/ap_start.sh)
+  else
+    /usr/bin/ap_start.sh
   fi
 fi
 

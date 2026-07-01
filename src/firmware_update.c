@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/ioctl.h>
 #include <sys/mount.h>
 #include <sys/reboot.h>
 #include <sys/stat.h>
@@ -26,12 +27,35 @@
 #define DEFAULT_CONF_FALLBACK "/etc/sip_media.conf.default"
 #define DEFAULT_UPDATE_FILE "/tmp/update.img"
 #define DEFAULT_RELEASE_LOG "/tmp/firmware_update.log"
-#define FLASH_DEVICE "/dev/mtdblock4"
+#define FLASH_DEVICE "/dev/mtd4"
+#define FLASH_VERIFY_DEVICE "/dev/mtd4"
 #define FLASH_MOUNTPOINT "/usr"
 #define FLASH_BLOCK 4096
 #define MAX_IMAGE_SIZE 11534336
 #define MAX_REDIRECTS 5
 #define LEGACY_REPO "aymerici/wibox-media"
+
+struct mtd_info_user_compat {
+    uint8_t type;
+    uint32_t flags;
+    uint32_t size;
+    uint32_t erasesize;
+    uint32_t writesize;
+    uint32_t oobsize;
+    uint64_t padding;
+};
+
+struct erase_info_user_compat {
+    uint32_t start;
+    uint32_t length;
+};
+
+#ifndef MEMGETINFO
+#define MEMGETINFO _IOR('M', 1, struct mtd_info_user_compat)
+#endif
+#ifndef MEMERASE
+#define MEMERASE _IOW('M', 2, struct erase_info_user_compat)
+#endif
 
 #define SSL_VERIFY_PEER 0x01
 #define X509_V_OK 0L
@@ -624,9 +648,12 @@ static int flash_file(const char *image_path, size_t image_size, const char *exp
     unsigned char buf[FLASH_BLOCK];
     ssize_t n;
     char flash_md5[33];
+    struct mtd_info_user_compat mtd;
+    uint32_t erase_len;
+    uint32_t erased;
 
     if (umount2(FLASH_MOUNTPOINT, MNT_DETACH) != 0) {
-        if (umount2(FLASH_DEVICE, MNT_DETACH) != 0) {
+        if (umount2("/dev/mtdblock4", MNT_DETACH) != 0) {
             log_line(stderr, "[!] unable to unmount %s: %s", FLASH_MOUNTPOINT, strerror(errno));
             return -1;
         }
@@ -641,6 +668,42 @@ static int flash_file(const char *image_path, size_t image_size, const char *exp
     if (flash_fd < 0) {
         log_line(stderr, "[!] open(%s): %s", FLASH_DEVICE, strerror(errno));
         close(image_fd);
+        return -1;
+    }
+
+    memset(&mtd, 0, sizeof(mtd));
+    if (ioctl(flash_fd, MEMGETINFO, &mtd) != 0) {
+        log_line(stderr, "[!] MEMGETINFO(%s): %s", FLASH_DEVICE, strerror(errno));
+        close(image_fd);
+        close(flash_fd);
+        return -1;
+    }
+    if (mtd.erasesize == 0 || image_size > mtd.size) {
+        log_line(stderr, "[!] invalid MTD geometry: size=%u erasesize=%u image=%zu",
+                 mtd.size, mtd.erasesize, image_size);
+        close(image_fd);
+        close(flash_fd);
+        return -1;
+    }
+    erase_len = (uint32_t)(((image_size + mtd.erasesize - 1) / mtd.erasesize) * mtd.erasesize);
+    log_line(stderr, "[*] erasing %u bytes on %s (mtd size=%u erasesize=%u)",
+             erase_len, FLASH_DEVICE, mtd.size, mtd.erasesize);
+    for (erased = 0; erased < erase_len; erased += mtd.erasesize) {
+        struct erase_info_user_compat erase;
+        erase.start = erased;
+        erase.length = mtd.erasesize;
+        if (ioctl(flash_fd, MEMERASE, &erase) != 0) {
+            log_line(stderr, "[!] MEMERASE(%s start=%u len=%u): %s",
+                     FLASH_DEVICE, erase.start, erase.length, strerror(errno));
+            close(image_fd);
+            close(flash_fd);
+            return -1;
+        }
+    }
+    if (lseek(flash_fd, 0, SEEK_SET) < 0) {
+        log_line(stderr, "[!] lseek(%s): %s", FLASH_DEVICE, strerror(errno));
+        close(image_fd);
+        close(flash_fd);
         return -1;
     }
     log_line(stderr, "[*] writing %zu bytes to %s", image_size, FLASH_DEVICE);
@@ -671,7 +734,7 @@ static int flash_file(const char *image_path, size_t image_size, const char *exp
     close(image_fd);
     close(flash_fd);
 
-    if (read_md5sum_prefix(FLASH_DEVICE, image_size, flash_md5) != 0) {
+    if (read_md5sum_prefix(FLASH_VERIFY_DEVICE, image_size, flash_md5) != 0) {
         log_line(stderr, "[!] unable to hash flashed image");
         return -1;
     }
@@ -716,6 +779,7 @@ int main(int argc, char **argv) {
     const char *repo = DEFAULT_REPO;
     bool force = false;
     bool reboot_after = true;
+    bool status_only = false;
     char conf_repo[128];
     char conf_enabled[16];
     char local_version[64];
@@ -735,10 +799,11 @@ int main(int argc, char **argv) {
         { "output", required_argument, NULL, 'o' },
         { "image", required_argument, NULL, 'i' },
         { "expected-md5", required_argument, NULL, 'm' },
+        { "status", no_argument, NULL, 's' },
         { 0, 0, 0, 0 }
     };
 
-    while ((opt = getopt_long(argc, argv, "c:r:fno:i:m:", long_opts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "c:r:fno:i:m:s", long_opts, NULL)) != -1) {
         switch (opt) {
         case 'c':
             conf_file = optarg;
@@ -761,8 +826,11 @@ int main(int argc, char **argv) {
         case 'm':
             install_expected_md5 = optarg;
             break;
+        case 's':
+            status_only = true;
+            break;
         default:
-            fprintf(stderr, "usage: %s [--config FILE] [--repo OWNER/REPO] [--force] [--no-reboot] [--output FILE] [--image FILE --expected-md5 MD5]\n", basename_const(argv[0]));
+            fprintf(stderr, "usage: %s [--config FILE] [--repo OWNER/REPO] [--force] [--no-reboot] [--output FILE] [--image FILE --expected-md5 MD5] [--status]\n", basename_const(argv[0]));
             return 2;
         }
     }
@@ -821,14 +889,28 @@ int main(int argc, char **argv) {
     }
 
     get_local_version(local_version, sizeof(local_version));
+    snprintf(image_name, sizeof(image_name), "wibox-media-%s.img", remote_version);
+    snprintf(image_url, sizeof(image_url), "https://github.com/%s/releases/download/%s/%s", repo, remote_version, image_name);
+    snprintf(md5s_url, sizeof(md5s_url), "https://github.com/%s/releases/download/%s/MD5SUMS", repo, remote_version);
+
+    if (status_only) {
+        int available = 1;
+        if (version_is_valid(local_version) && version_compare(remote_version, local_version) <= 0) {
+            available = 0;
+        }
+        printf("repo=%s\n", repo);
+        printf("local_version=%s\n", local_version);
+        printf("remote_version=%s\n", remote_version);
+        printf("available=%d\n", available);
+        printf("image_url=%s\n", image_url);
+        return 0;
+    }
+
     if (!force && version_is_valid(local_version) && version_compare(remote_version, local_version) <= 0) {
         log_line(stderr, "[*] already up to date: local=%s remote=%s", local_version, remote_version);
         return 0;
     }
 
-    snprintf(image_name, sizeof(image_name), "wibox-media-%s.img", remote_version);
-    snprintf(image_url, sizeof(image_url), "https://github.com/%s/releases/download/%s/%s", repo, remote_version, image_name);
-    snprintf(md5s_url, sizeof(md5s_url), "https://github.com/%s/releases/download/%s/MD5SUMS", repo, remote_version);
     {
         text_buffer_t md5s;
         if (download_text(md5s_url, &md5s) != 0) {
