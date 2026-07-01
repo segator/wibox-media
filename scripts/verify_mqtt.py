@@ -168,7 +168,7 @@ def assert_config(seen, component, object_id, expected_state_topic,
 
 
 def assert_command_config(seen, component, object_id, expected_command_topic,
-                          expected_icon=None):
+                          expected_icon=None, expected_availability_topic=None):
     topic = f"{MQTT_HA_PREFIX}/{component}/{HA_ID}_{object_id}/config"
     payload = assert_present(seen, topic)
     try:
@@ -179,6 +179,12 @@ def assert_command_config(seen, component, object_id, expected_command_topic,
     command_topic = config.get("command_topic")
     if command_topic != expected_command_topic:
         raise AssertionError(f"{topic} command_topic={command_topic!r}, expected {expected_command_topic!r}")
+    if expected_availability_topic is not None:
+        availability_topic = config.get("availability_topic")
+        if availability_topic != expected_availability_topic:
+            raise AssertionError(
+                f"{topic} availability_topic={availability_topic!r}, expected {expected_availability_topic!r}"
+            )
     if expected_icon is not None and config.get("icon") != expected_icon:
         raise AssertionError(f"{topic} icon={config.get('icon')!r}, expected {expected_icon!r}")
     return config
@@ -199,6 +205,9 @@ def main():
         f"{MQTT_BASE_TOPIC}/firmware/build_timestamp",
         f"{MQTT_BASE_TOPIC}/wifi/rssi",
         f"{MQTT_BASE_TOPIC}/video/enabled",
+        f"{MQTT_BASE_TOPIC}/firmware/update/install/availability",
+        f"{MQTT_BASE_TOPIC}/firmware/update/available",
+        f"{MQTT_BASE_TOPIC}/firmware/update/version",
         f"{MQTT_HA_PREFIX}/button/{HA_ID}_open_door/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_media_state/config",
         f"{MQTT_HA_PREFIX}/sensor/{HA_ID}_firmware_version/config",
@@ -234,6 +243,9 @@ def main():
     firmware_build_timestamp = assert_present(seen, f"{MQTT_BASE_TOPIC}/firmware/build_timestamp")
     wifi_rssi = assert_present(seen, f"{MQTT_BASE_TOPIC}/wifi/rssi")
     video_enabled = assert_present(seen, f"{MQTT_BASE_TOPIC}/video/enabled")
+    firmware_update_install_availability = assert_present(
+        seen, f"{MQTT_BASE_TOPIC}/firmware/update/install/availability"
+    )
 
     assert_command_config(seen, "button", "open_door", f"{MQTT_BASE_TOPIC}/door/open/set",
                           expected_icon="mdi:door-open")
@@ -245,8 +257,11 @@ def main():
                   no_device_class=True, expected_icon="mdi:source-commit")
     assert_config(seen, "sensor", "firmware_build_timestamp", f"{MQTT_BASE_TOPIC}/firmware/build_timestamp",
                   expected_device_class="timestamp", expected_icon="mdi:clock-outline")
-    assert_command_config(seen, "button", "firmware_update_install", f"{MQTT_BASE_TOPIC}/firmware/update/install/set",
-                          expected_icon="mdi:update")
+    assert_command_config(
+        seen, "button", "firmware_update_install", f"{MQTT_BASE_TOPIC}/firmware/update/install/set",
+        expected_icon="mdi:update",
+        expected_availability_topic=f"{MQTT_BASE_TOPIC}/firmware/update/install/availability"
+    )
     assert_config(seen, "binary_sensor", "firmware_update_available", f"{MQTT_BASE_TOPIC}/firmware/update/available",
                   expected_icon="mdi:update")
     assert_config(seen, "sensor", "firmware_update_version", f"{MQTT_BASE_TOPIC}/firmware/update/version",
@@ -271,7 +286,8 @@ def main():
     print(f"[*] MQTT discovery/state OK for {MQTT_BASE_TOPIC}")
     print(f"    media/state={media_state} firmware/version={firmware_version} "
           f"firmware/commit={firmware_commit} firmware/build_timestamp={firmware_build_timestamp} "
-          f"wifi/rssi={wifi_rssi} video/enabled={video_enabled}")
+          f"wifi/rssi={wifi_rssi} video/enabled={video_enabled} "
+          f"firmware/update/install/availability={firmware_update_install_availability}")
 
 
 if __name__ == "__main__":

@@ -475,12 +475,14 @@ static void publish_button_config(void) {
 static void publish_firmware_update_button_config(void) {
     char topic[256];
     char command_topic[256];
+    char availability_topic[256];
     char uid[192];
     char dev[512];
     char payload[1536];
 
     discovery_topic(topic, sizeof(topic), "button", "firmware_update_install");
     topic_path(command_topic, sizeof(command_topic), "firmware/update/install/set");
+    topic_path(availability_topic, sizeof(availability_topic), "firmware/update/install/availability");
     unique_id(uid, sizeof(uid), "firmware_update_install");
     device_json(dev, sizeof(dev));
 
@@ -488,7 +490,7 @@ static void publish_firmware_update_button_config(void) {
              "{\"name\":\"Firmware Update Install\",\"unique_id\":\"%s\","
              "\"command_topic\":\"%s\",\"payload_press\":\"PRESS\","
              "\"availability_topic\":\"%s\",\"icon\":\"mdi:update\",%s}",
-             uid, command_topic, mqtt_state.base_topic, dev);
+             uid, command_topic, availability_topic, dev);
     mqtt_publish_raw(topic, payload, 1);
 }
 
@@ -613,6 +615,8 @@ static void clear_firmware_update_entities(void) {
 
     topic_path(topic, sizeof(topic), "firmware/update/install");
     clear_retained_topic(topic);
+    topic_path(topic, sizeof(topic), "firmware/update/install/availability");
+    clear_retained_topic(topic);
     topic_path(topic, sizeof(topic), "firmware/update/available");
     clear_retained_topic(topic);
     topic_path(topic, sizeof(topic), "firmware/update/version");
@@ -714,6 +718,8 @@ static void firmware_update_check_and_publish(void) {
     mqtt_state.firmware_update_version[sizeof(mqtt_state.firmware_update_version) - 1] = '\0';
     publish_suffix("firmware/update/version", mqtt_state.firmware_update_version, 1);
     publish_suffix("firmware/update/available", mqtt_state.firmware_update_available ? "ON" : "OFF", 1);
+    publish_suffix("firmware/update/install/availability",
+                   mqtt_state.firmware_update_available ? "online" : "offline", 1);
     printf("%s: firmware update check local=%s remote=%s available=%d url=%s\n",
            MQTT_FILE, local_version, remote_version, mqtt_state.firmware_update_available, download_url);
 }
