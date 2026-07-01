@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/segator/wibox-media/compare/v0.4.10...v0.5.0) (2026-07-01)
+
+
+### Features
+
+* add firmware update refresh button ([5a87b6c](https://github.com/segator/wibox-media/commit/5a87b6c6b273bb314d9c04289926b404adbbe471))
+
 ## [0.4.10](https://github.com/segator/wibox-media/compare/v0.4.9...v0.4.10) (2026-07-01)
 
 
