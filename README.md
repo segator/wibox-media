@@ -19,11 +19,12 @@ The main runtime is `wibox-media-daemon`.
 3. If the device does not boot, read [Recovery](docs/recovery.md).
 4. If you want the runtime layout, read [Architecture](docs/architecture.md).
 5. If you want MQTT entity details, read [SIP Media](docs/sip_media.md).
+6. If you are already running this firmware, read [Updates](docs/updates.md).
 
 ## Current Release
 
 <!-- x-release-please-start-version -->
-[v0.4.9](https://github.com/segator/wibox-media/releases/tag/v0.4.7)
+[v0.4.9](https://github.com/segator/wibox-media/releases/tag/v0.4.9)
 <!-- x-release-please-end -->
 
 Download the latest release image:

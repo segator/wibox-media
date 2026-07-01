@@ -92,15 +92,19 @@ On the WiBox:
 nc "${PC_IP}" 8888 > /tmp/update.img
 dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
 sync
+fsync /dev/mtdblock4
 reboot
 ```
 
 ### Serial
 
-Transfer `wibox-media.img` or `release/latest` to `/tmp/update.img` and then run:
+For first installation over serial, transfer `wibox-media.img` or
+`release/latest` to `/tmp/update.img`, then write it to the `/usr` partition:
 
 ```sh
-/usr/bin/firmware_update
+dd if=/tmp/update.img of=/dev/mtdblock4 bs=4096
+sync
+fsync /dev/mtdblock4
 reboot
 ```
 
@@ -123,3 +127,15 @@ The key options are:
 - `prometheus_enabled`
 
 For the full runtime model, read [SIP Media](sip_media.md).
+
+## 7. Future Updates
+
+After the custom firmware is installed, update from Home Assistant or with the
+on-device updater:
+
+```sh
+/usr/bin/firmware_update --status
+/usr/bin/firmware_update
+```
+
+For the full update workflow and troubleshooting notes, read [Updates](updates.md).
