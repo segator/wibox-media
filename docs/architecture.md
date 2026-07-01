@@ -12,7 +12,6 @@ This is the current production shape of the custom WiBox image.
        -> GPIO and LED setup
        -> kernel modules
        -> WiFi station setup from /mnt/mtd/wpa_supplicant.conf
-       -> transient WiFi power-save disable on wlan0
        -> Dropbear SSH
        -> short Sofia warmup for video hardware
        -> app_watchdog.sh wibox-media-daemon /usr/bin/wibox-media-daemon
@@ -39,10 +38,6 @@ It owns:
 - MQTT/Home Assistant discovery, commands and state;
 - firmware update checks and install requests;
 - Prometheus `/metrics` and `/healthz`.
-
-`run.sh` disables WiFi power save at runtime with `/usr/sbin/iwconfig wlan0
-power off` after each station bring-up. This is not persisted in flash and is
-reapplied after the Sofia warmup reinitializes WiFi.
 
 ## Call Flow
 

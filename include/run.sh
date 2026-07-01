@@ -72,9 +72,6 @@ ln -s /mnt/mtd/Config/resolv.conf /var/resolv.conf
 wpa_supplicant -i wlan0 -c ${WPA_CONF} -B
 timeout -t 150 udhcpc -i wlan0 -s /var/wifi/udhcpc.conf
 
-# Keep WiFi power save disabled for runtime stability.
-/usr/sbin/iwconfig wlan0 power off >/dev/null 2>&1 || true
-
 [ "$?" = 0 ] && wifi_led green || wifi_led red
 
 # increase network buffer
@@ -114,7 +111,6 @@ if [ -z "${RUN_SOFIA}" ] || [ "${RUN_SOFIA}" != "0" ]; then
   if grep -q ssid ${WPA_CONF}; then
     wpa_supplicant -i wlan0 -c ${WPA_CONF} -B
     timeout -t 150 udhcpc -i wlan0 -s /var/wifi/udhcpc.conf
-    /usr/sbin/iwconfig wlan0 power off >/dev/null 2>&1 || true
     [ "$?" = 0 ] && wifi_led green || (wifi_led off; /usr/bin/ap_start.sh)
   else
     /usr/bin/ap_start.sh
