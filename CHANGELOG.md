@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/segator/wibox-media/compare/v0.5.2...v0.5.3) (2026-07-01)
+
+
+### Bug Fixes
+
+* respond to SIP OPTIONS requests ([90661f1](https://github.com/segator/wibox-media/commit/90661f1fb66ff24ea25df7162df98189eb83277b))
+
 ## [0.5.2](https://github.com/segator/wibox-media/compare/v0.5.1...v0.5.2) (2026-07-01)
 
 
