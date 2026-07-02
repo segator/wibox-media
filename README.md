@@ -66,7 +66,10 @@ Newer versions should also be treated as serial-only until proven otherwise.
 4. Add the discovered MQTT device in Home Assistant. Normal daily control is
    through Home Assistant: media state, open door, video enable/disable and
    firmware update buttons.
-5. Future updates should use [Firmware Updates](docs/updates.md). The WiBox
+5. If real doorbell calls do not arrive but manual `DING` tests work, check the
+   call-forward LED and PB2/VDS address programming in
+   [Doorbell Call Troubleshooting](docs/getting_started.md#10-doorbell-call-troubleshooting).
+6. Future updates should use [Firmware Updates](docs/updates.md). The WiBox
    includes its own HTTPS-capable updater because stock `wget` cannot download
    GitHub release assets.
 

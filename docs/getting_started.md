@@ -194,12 +194,41 @@ When MQTT is configured, the daemon publishes Home Assistant discovery for:
 - `Door Unlocked` pulse binary sensor;
 - `WiFi RSSI` sensor;
 - `Video Enabled` switch;
+- `Call Forward Enabled` switch;
 - firmware update available/version sensors;
 - firmware update refresh/install buttons.
 
 Home Assistant should be the normal control surface after installation.
 
-## 10. Future Updates
+## 10. Doorbell Call Troubleshooting
+
+If Home Assistant/SIP works when you trigger `DING` manually but real visitors
+do not generate calls, check the physical WiBox intercom state before debugging
+SIP.
+
+The Fermax call-forward/redirect LED must be blue. Green means the physical
+call-forward path is disabled, so the WiBox may not receive the outside-panel
+call. Press the WiBox forward button or use the Home Assistant
+`Call Forward Enabled` switch to toggle it back to blue.
+
+The WiBox also has to be programmed on the VDS bus. If it is not paired with
+the installation address, the indoor monitor can still ring while the WiBox sees
+no `ALARM_REPORT` frame on `/dev/ttySGK1`. Re-run the Fermax PB2/VDS address
+programming flow: put the WiBox in address programming mode with PB2, then press
+the corresponding button on the physical indoor monitor so the WiBox stores the
+same address.
+
+A correctly detected outside-panel call appears in the daemon log as:
+
+```text
+UART code received: ALARM_REPORT [FB 11 00 1C]
+DING detected from serial alarm
+```
+
+`PUSH_STATE_0` / `PUSH_STATE_1` only indicate the call-forward button state.
+They are not the doorbell event.
+
+## 11. Future Updates
 
 Do not repeat the first-install `dd` flow for routine upgrades.
 

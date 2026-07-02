@@ -44,7 +44,9 @@ It owns:
 Doorbell-originated call:
 
 ```text
-/dev/ttySGK1 ALARM_REPORT or PUSH_STATE_0
+/usr/bin/wibox-media-daemon boot
+  -> FB 19 01 25 to /dev/ttySGK1 to enable physical call forwarding
+/dev/ttySGK1 ALARM_REPORT
   -> media/state = ringing
   -> SIP INVITE to outgoing_call_target
   -> SIP established

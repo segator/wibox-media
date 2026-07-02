@@ -6,6 +6,7 @@
 typedef struct {
     void (*open_door)(void* user_data);
     void (*set_video_enabled)(int enabled, void* user_data);
+    void (*set_call_forward_enabled)(int enabled, void* user_data);
 } mqtt_callbacks_t;
 
 int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
@@ -22,6 +23,7 @@ void mqtt_publish_call_active(int active);
 void mqtt_publish_sip_call_active(int active);
 void mqtt_publish_video_active(int active);
 void mqtt_publish_video_enabled(int enabled);
+void mqtt_publish_call_forward_enabled(int enabled);
 void mqtt_publish_media_state(const char* state);
 void mqtt_publish_firmware_version(void);
 void mqtt_publish_door_unlocked_pulse(void);

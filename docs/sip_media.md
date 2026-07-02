@@ -91,10 +91,16 @@ Important incoming frames:
 
 ```text
 ALARM_REPORT  FB 11 00 1C
-PUSH_STATE_0  FB 19 00 24
+PUSH_STATE_0  FB 19 00 24  (call forwarding off)
+PUSH_STATE_1  FB 19 01 25  (call forwarding on)
 HANG_UP       FB 13 00 1E / FB 13 01 1F
 STOP_RING     FB 23 00 2E
 ```
+
+Real outside-panel calls must arrive as `ALARM_REPORT`. If pressing the physical
+WiBox forward button only produces `PUSH_STATE_0` / `PUSH_STATE_1`, that only
+proves the call-forward button is being read. It does not prove the WiBox is
+paired to the VDS address. See [Getting Started](getting_started.md#10-doorbell-call-troubleshooting).
 
 See [UART Codes](codes.md) for the full list.
 
@@ -116,6 +122,7 @@ Commands:
 ```text
 wibox/<hostname>/door/open/set = PRESS
 wibox/<hostname>/video/enabled/set = ON|OFF
+wibox/<hostname>/call_forward/enabled/set = ON|OFF
 wibox/<hostname>/firmware/update/check/set = PRESS
 wibox/<hostname>/firmware/update/install/set = PRESS
 ```
@@ -126,6 +133,7 @@ State topics:
 wibox/<hostname>/media/state
 wibox/<hostname>/door/unlocked
 wibox/<hostname>/video/enabled
+wibox/<hostname>/call_forward/enabled
 wibox/<hostname>/wifi/rssi
 wibox/<hostname>/firmware/version
 wibox/<hostname>/firmware/commit
@@ -144,6 +152,11 @@ established
 ```
 
 `door/unlocked` is a short pulse: `ON` then `OFF`.
+
+`call_forward/enabled` controls the physical Fermax call-forward/redirect state.
+`ON` sends `FB 19 01 25` and should leave the WiBox LED blue. `OFF` sends
+`FB 19 00 24` and should leave it green. The same state is updated when the
+physical WiBox forward button reports `PUSH_STATE_0` / `PUSH_STATE_1`.
 
 The update install button is only available when an update is available. It is
 set unavailable immediately after an install request is accepted.

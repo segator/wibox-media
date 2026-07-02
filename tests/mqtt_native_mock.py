@@ -92,6 +92,7 @@ def broker(published):
                     if not sent_commands and topic == "wibox/test":
                         sent_commands = True
                         conn.sendall(publish("wibox/test/video/enabled/set", "OFF"))
+                        conn.sendall(publish("wibox/test/call_forward/enabled/set", "OFF"))
                         conn.sendall(publish("wibox/test/door/open/set", "PRESS"))
                 elif typ == 0xC0:
                     conn.sendall(packet(0xD0))
@@ -157,6 +158,12 @@ def main():
         return 1
     if not any(topic.endswith("_firmware_build_timestamp/config") for topic, _ in published):
         print("missing firmware build timestamp Home Assistant discovery publish", file=sys.stderr)
+        return 1
+    if not any(topic.endswith("_call_forward_enabled/config") for topic, _ in published):
+        print("missing call forward Home Assistant discovery publish", file=sys.stderr)
+        return 1
+    if ("wibox/test/call_forward/enabled", "ON") not in published:
+        print("missing retained call forward initial state", file=sys.stderr)
         return 1
     for topic, payload in published:
         if topic.endswith("_firmware_update_available/config") or \

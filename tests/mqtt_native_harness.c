@@ -8,6 +8,7 @@
 typedef struct {
     int open_count;
     int video_value;
+    int call_forward_value;
 } harness_state_t;
 
 static void on_open_door(void* user_data) {
@@ -22,6 +23,12 @@ static void on_video_enabled(int enabled, void* user_data) {
     printf("CALLBACK video_enabled=%d\n", enabled);
 }
 
+static void on_call_forward_enabled(int enabled, void* user_data) {
+    harness_state_t* state = (harness_state_t*)user_data;
+    state->call_forward_value = enabled;
+    printf("CALLBACK call_forward_enabled=%d\n", enabled);
+}
+
 int main(void) {
     wibox_config_t config;
     mqtt_callbacks_t callbacks;
@@ -31,6 +38,7 @@ int main(void) {
     memset(&callbacks, 0, sizeof(callbacks));
     memset(&state, 0, sizeof(state));
     state.video_value = -1;
+    state.call_forward_value = -1;
 
     config_init_defaults(&config);
     config.mqtt_enabled = 1;
@@ -46,6 +54,7 @@ int main(void) {
 
     callbacks.open_door = on_open_door;
     callbacks.set_video_enabled = on_video_enabled;
+    callbacks.set_call_forward_enabled = on_call_forward_enabled;
 
     if (mqtt_init(&config, "127.0.0.1", &callbacks, &state) != 0) {
         return 2;
@@ -54,12 +63,15 @@ int main(void) {
         return 3;
     }
 
-    for (i = 0; i < 80 && (state.open_count == 0 || state.video_value != 0); i++) {
+    for (i = 0; i < 80 && (state.open_count == 0 || state.video_value != 0 ||
+                           state.call_forward_value != 0); i++) {
         usleep(100000);
     }
 
     mqtt_publish_door_unlocked_pulse();
     mqtt_stop();
-    printf("RESULT open=%d video=%d\n", state.open_count, state.video_value);
-    return (state.open_count == 1 && state.video_value == 0) ? 0 : 1;
+    printf("RESULT open=%d video=%d call_forward=%d\n",
+           state.open_count, state.video_value, state.call_forward_value);
+    return (state.open_count == 1 && state.video_value == 0 &&
+            state.call_forward_value == 0) ? 0 : 1;
 }

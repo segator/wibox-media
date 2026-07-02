@@ -683,6 +683,18 @@ static void mqtt_set_video_enabled_callback(int enabled, void* user_data) {
     prometheus_set_video_enabled(app_config.video_enabled);
 }
 
+static void mqtt_set_call_forward_enabled_callback(int enabled, void* user_data) {
+    intercom_cmd_t cmd = enabled ? INTERCOM_CMD_ENABLE_PUSH_STATE : INTERCOM_CMD_DISABLE_PUSH_STATE;
+    (void)user_data;
+
+    if (intercom_send_command(cmd) == 0) {
+        printf("MQTT call_forward_enabled set to %d\n", enabled ? 1 : 0);
+        mqtt_publish_call_forward_enabled(enabled ? 1 : 0);
+    } else {
+        printf("Failed to set call_forward_enabled to %d\n", enabled ? 1 : 0);
+    }
+}
+
 static void handle_audio_test_control(const char* message) {
     char ip[64];
     int port;
@@ -1058,10 +1070,13 @@ static void handle_uart_frame(const unsigned char frame[4]) {
         mqtt_publish_call_active(1);
         break;
     case UART_CODE_PUSH_STATE_0:
-        report_alarm_event(1);
-        handle_ding_trigger("serial push state");
+        PJ_LOG(3,(THIS_FILE, "Intercom call forwarding state is inactive"));
+        mqtt_publish_call_forward_enabled(0);
         break;
     case UART_CODE_PUSH_STATE_1:
+        PJ_LOG(3,(THIS_FILE, "Intercom call forwarding state is active"));
+        mqtt_publish_call_forward_enabled(1);
+        break;
     case UART_CODE_MCU_STATE_0:
     case UART_CODE_MCU_STATE_1:
     case UART_CODE_CMD_DOWN_LONG_1:
@@ -1598,6 +1613,7 @@ int main(int argc, char *argv[]) {
     memset(&mqtt_callbacks, 0, sizeof(mqtt_callbacks));
     mqtt_callbacks.open_door = mqtt_open_door_callback;
     mqtt_callbacks.set_video_enabled = mqtt_set_video_enabled_callback;
+    mqtt_callbacks.set_call_forward_enabled = mqtt_set_call_forward_enabled_callback;
     mqtt_init(&app_config, local_ip, &mqtt_callbacks, NULL);
     if (app_config.prometheus_enabled && prometheus_start(app_config.prometheus_port) < 0) {
         printf("Warning: Failed to start Prometheus exporter\n");
@@ -1619,6 +1635,9 @@ int main(int argc, char *argv[]) {
     // Check intercom access
     if (intercom_init() < 0) {
         printf("Warning: Failed to initialize intercom module\n");
+    } else if (app_config.serial_listener_enabled) {
+        printf("Enabling intercom physical doorbell push state\n");
+        intercom_send_command(INTERCOM_CMD_ENABLE_PUSH_STATE);
     }
 
     // Initialize PJLIB

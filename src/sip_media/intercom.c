@@ -14,9 +14,11 @@ typedef struct {
 } intercom_command_def_t;
 
 static intercom_command_def_t command_defs[] = {
-    {INTERCOM_CMD_UNLOCK_DOOR, "UNLOCK_DOOR", {0xFB, 0x12, 0x01, 0x1E}},
-    {INTERCOM_CMD_START_CALL,  "START_CALL",  {0xFB, 0x14, 0x01, 0x20}},
-    {INTERCOM_CMD_STOP_CALL,   "STOP_CALL",   {0xFB, 0x14, 0x00, 0x1F}},
+    {INTERCOM_CMD_UNLOCK_DOOR,       "UNLOCK_DOOR",       {0xFB, 0x12, 0x01, 0x1E}},
+    {INTERCOM_CMD_START_CALL,        "START_CALL",        {0xFB, 0x14, 0x01, 0x20}},
+    {INTERCOM_CMD_STOP_CALL,         "STOP_CALL",         {0xFB, 0x14, 0x00, 0x1F}},
+    {INTERCOM_CMD_ENABLE_PUSH_STATE, "ENABLE_PUSH_STATE", {0xFB, 0x19, 0x01, 0x25}},
+    {INTERCOM_CMD_DISABLE_PUSH_STATE,"DISABLE_PUSH_STATE",{0xFB, 0x19, 0x00, 0x24}},
 };
 
 #define NUM_COMMANDS (sizeof(command_defs) / sizeof(command_defs[0]))

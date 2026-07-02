@@ -39,6 +39,7 @@ typedef struct {
     char device_name[128];
     char local_ip[64];
     int video_enabled;
+    int call_forward_enabled;
     int firmware_update_enabled;
     char firmware_update_repo[128];
     char firmware_update_version[64];
@@ -578,6 +579,29 @@ static void publish_video_switch_config(void) {
     mqtt_publish_raw(topic, payload, 1);
 }
 
+static void publish_call_forward_switch_config(void) {
+    char topic[256];
+    char state_topic[256];
+    char command_topic[256];
+    char uid[192];
+    char dev[512];
+    char payload[1536];
+
+    discovery_topic(topic, sizeof(topic), "switch", "call_forward_enabled");
+    topic_path(state_topic, sizeof(state_topic), "call_forward/enabled");
+    topic_path(command_topic, sizeof(command_topic), "call_forward/enabled/set");
+    unique_id(uid, sizeof(uid), "call_forward_enabled");
+    device_json(dev, sizeof(dev));
+
+    snprintf(payload, sizeof(payload),
+             "{\"name\":\"Call Forward Enabled\",\"unique_id\":\"%s\","
+             "\"state_topic\":\"%s\",\"command_topic\":\"%s\","
+             "\"availability_topic\":\"%s\",\"payload_on\":\"ON\","
+             "\"payload_off\":\"OFF\",\"icon\":\"mdi:phone-forward\",%s}",
+             uid, state_topic, command_topic, mqtt_state.base_topic, dev);
+    mqtt_publish_raw(topic, payload, 1);
+}
+
 static void publish_unlock_binary_sensor_config(void) {
     char topic[256];
     char state_topic[256];
@@ -795,6 +819,7 @@ void mqtt_publish_discovery(void) {
     publish_unlock_binary_sensor_config();
     publish_sensor_config("wifi_rssi", "WiFi RSSI", "wifi/rssi", "signal_strength", "wifi");
     publish_video_switch_config();
+    publish_call_forward_switch_config();
 }
 
 void mqtt_publish_online(void) {
@@ -825,6 +850,11 @@ void mqtt_publish_video_active(int active) {
 
 void mqtt_publish_video_enabled(int enabled) {
     publish_suffix("video/enabled", enabled ? "ON" : "OFF", 1);
+}
+
+void mqtt_publish_call_forward_enabled(int enabled) {
+    mqtt_state.call_forward_enabled = enabled ? 1 : 0;
+    publish_suffix("call_forward/enabled", enabled ? "ON" : "OFF", 1);
 }
 
 void mqtt_publish_media_state(const char* state) {
@@ -916,6 +946,16 @@ static void handle_mqtt_message(const char* topic, const char* payload) {
             mqtt_state.callbacks.set_video_enabled(1, mqtt_state.user_data);
         } else if (payload_is_off(payload) && mqtt_state.callbacks.set_video_enabled) {
             mqtt_state.callbacks.set_video_enabled(0, mqtt_state.user_data);
+        }
+        return;
+    }
+
+    topic_path(expected, sizeof(expected), "call_forward/enabled/set");
+    if (strcmp(topic, expected) == 0) {
+        if (payload_is_on(payload) && mqtt_state.callbacks.set_call_forward_enabled) {
+            mqtt_state.callbacks.set_call_forward_enabled(1, mqtt_state.user_data);
+        } else if (payload_is_off(payload) && mqtt_state.callbacks.set_call_forward_enabled) {
+            mqtt_state.callbacks.set_call_forward_enabled(0, mqtt_state.user_data);
         }
         return;
     }
@@ -1061,6 +1101,7 @@ static void* mqtt_thread_func(void* arg) {
         }
         publish_suffix("door/unlocked", "OFF", 1);
         mqtt_publish_video_enabled(mqtt_state.video_enabled);
+        mqtt_publish_call_forward_enabled(mqtt_state.call_forward_enabled);
         mqtt_publish_wifi_stats();
 
         while (mqtt_state.running) {
@@ -1115,6 +1156,7 @@ int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
     strncpy(mqtt_state.ha_prefix, app_config->mqtt_homeassistant_prefix, sizeof(mqtt_state.ha_prefix) - 1);
     strncpy(mqtt_state.local_ip, local_ip ? local_ip : "0.0.0.0", sizeof(mqtt_state.local_ip) - 1);
     mqtt_state.video_enabled = app_config->video_enabled;
+    mqtt_state.call_forward_enabled = app_config->serial_listener_enabled ? 1 : 0;
     mqtt_state.firmware_update_enabled = app_config->firmware_update_enabled;
     strncpy(mqtt_state.firmware_update_repo, app_config->firmware_update_repo,
             sizeof(mqtt_state.firmware_update_repo) - 1);
