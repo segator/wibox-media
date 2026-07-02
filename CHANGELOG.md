@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/segator/wibox-media/compare/v0.6.1...v0.7.0) (2026-07-02)
+
+
+### Features
+
+* add f1 control and uart metrics ([eb63779](https://github.com/segator/wibox-media/commit/eb63779f0633e7cc8b2c8cc9c67d580a95f16630))
+
 ## [0.6.1](https://github.com/segator/wibox-media/compare/v0.6.0...v0.6.1) (2026-07-02)
 
 
