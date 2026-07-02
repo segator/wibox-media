@@ -642,6 +642,8 @@ static void clear_legacy_entities(void) {
     clear_retained_topic(topic);
     topic_path(topic, sizeof(topic), "ringing/last");
     clear_retained_topic(topic);
+    discovery_topic(topic, sizeof(topic), "sensor", "last_ring");
+    clear_retained_topic(topic);
     discovery_topic(topic, sizeof(topic), "sensor", "last_unlock");
     clear_retained_topic(topic);
     topic_path(topic, sizeof(topic), "door/last_unlock");

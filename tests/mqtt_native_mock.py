@@ -165,6 +165,12 @@ def main():
     if ("wibox/test/call_forward/enabled", "ON") not in published:
         print("missing retained call forward initial state", file=sys.stderr)
         return 1
+    if ("homeassistant/sensor/wibox_test_last_ring/config", "") not in published:
+        print("missing retained last ring discovery cleanup", file=sys.stderr)
+        return 1
+    if ("wibox/test/ringing/last", "") not in published:
+        print("missing retained last ring state cleanup", file=sys.stderr)
+        return 1
     for topic, payload in published:
         if topic.endswith("_firmware_update_available/config") or \
            topic.endswith("_firmware_update_version/config") or \
