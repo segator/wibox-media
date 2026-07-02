@@ -121,6 +121,7 @@ Commands:
 
 ```text
 wibox/<hostname>/door/open/set = PRESS
+wibox/<hostname>/f1/trigger/set = PRESS
 wibox/<hostname>/video/enabled/set = ON|OFF
 wibox/<hostname>/call_forward/enabled/set = ON|OFF
 wibox/<hostname>/firmware/update/check/set = PRESS
@@ -152,6 +153,10 @@ established
 ```
 
 `door/unlocked` is a short pulse: `ON` then `OFF`.
+
+`f1/trigger/set` sends a short F1 auxiliary-function pulse. On Fermax systems
+this is not the main door opener; it is intended for installations wired with an
+additional F1 relay, for example an auxiliary door, lights or lift control.
 
 `call_forward/enabled` controls the physical Fermax call-forward/redirect state.
 `ON` sends `FB 19 01 25` and should leave the WiBox LED blue. `OFF` sends
@@ -194,10 +199,23 @@ wibox_door_unlocks_total
 wibox_last_ring_timestamp_seconds
 wibox_last_unlock_timestamp_seconds
 wibox_wifi_rssi_dbm
+wibox_uart_frames_total
+wibox_uart_unknown_frames_total
+wibox_uart_alarm_reports_total
+wibox_uart_hangups_total
+wibox_uart_stop_rings_total
+wibox_uart_resets_total
+wibox_uart_push_state_total
+wibox_uart_f1_total
 ```
 
 Some Prometheus gauges expose lower-level runtime state for monitoring even
 though Home Assistant intentionally presents only the simpler `media_state`.
+
+The runtime log is `/var/log/wibox-media-daemon.log`. In the production image
+`app_watchdog.sh` rotates it to `/var/log/wibox-media-daemon.log.old` at 100 KB.
+`/var` is RAM-backed on the WiBox, so this protects RAM usage and does not write
+logs to flash.
 
 ## Local Test API
 

@@ -42,6 +42,14 @@ typedef struct {
     unsigned long door_unlocks_total;
     unsigned long calls_started_total;
     unsigned long video_sessions_started_total;
+    unsigned long uart_frames_total;
+    unsigned long uart_unknown_frames_total;
+    unsigned long uart_alarm_reports_total;
+    unsigned long uart_hangups_total;
+    unsigned long uart_stop_rings_total;
+    unsigned long uart_resets_total;
+    unsigned long uart_push_state_total;
+    unsigned long uart_f1_total;
     time_t last_ring;
     time_t last_unlock;
 } prometheus_state_t;
@@ -176,6 +184,40 @@ static void build_metrics(char* body, size_t body_size) {
              (long)snapshot.last_ring,
              (long)snapshot.last_unlock,
              wifi_rssi);
+
+    snprintf(body + strlen(body), body_size - strlen(body),
+             "# HELP wibox_uart_frames_total Total recognized UART frames received from the Fermax panel.\n"
+             "# TYPE wibox_uart_frames_total counter\n"
+             "wibox_uart_frames_total %lu\n"
+             "# HELP wibox_uart_unknown_frames_total Total unknown UART frames received from the Fermax panel.\n"
+             "# TYPE wibox_uart_unknown_frames_total counter\n"
+             "wibox_uart_unknown_frames_total %lu\n"
+             "# HELP wibox_uart_alarm_reports_total Total panel alarm/ring UART reports.\n"
+             "# TYPE wibox_uart_alarm_reports_total counter\n"
+             "wibox_uart_alarm_reports_total %lu\n"
+             "# HELP wibox_uart_hangups_total Total panel hangup UART reports.\n"
+             "# TYPE wibox_uart_hangups_total counter\n"
+             "wibox_uart_hangups_total %lu\n"
+             "# HELP wibox_uart_stop_rings_total Total physical-intercom stop-ring UART reports.\n"
+             "# TYPE wibox_uart_stop_rings_total counter\n"
+             "wibox_uart_stop_rings_total %lu\n"
+             "# HELP wibox_uart_resets_total Total panel reset UART reports.\n"
+             "# TYPE wibox_uart_resets_total counter\n"
+             "wibox_uart_resets_total %lu\n"
+             "# HELP wibox_uart_push_state_total Total call-forward state UART reports.\n"
+             "# TYPE wibox_uart_push_state_total counter\n"
+             "wibox_uart_push_state_total %lu\n"
+             "# HELP wibox_uart_f1_total Total F1 function commands sent by the daemon.\n"
+             "# TYPE wibox_uart_f1_total counter\n"
+             "wibox_uart_f1_total %lu\n",
+             snapshot.uart_frames_total,
+             snapshot.uart_unknown_frames_total,
+             snapshot.uart_alarm_reports_total,
+             snapshot.uart_hangups_total,
+             snapshot.uart_stop_rings_total,
+             snapshot.uart_resets_total,
+             snapshot.uart_push_state_total,
+             snapshot.uart_f1_total);
 }
 
 static void send_response(int fd, int status, const char* status_text,
@@ -196,7 +238,7 @@ static void send_response(int fd, int status, const char* status_text,
 
 static void handle_client(int fd) {
     char request[256];
-    char body[4096];
+    char body[8192];
     ssize_t n;
 
     n = recv(fd, request, sizeof(request) - 1, 0);
@@ -369,4 +411,42 @@ void prometheus_inc_video_started(void) {
     pthread_mutex_lock(&prom_mutex);
     prom_state.video_sessions_started_total++;
     pthread_mutex_unlock(&prom_mutex);
+}
+
+static void inc_ulong_metric(unsigned long* field) {
+    pthread_mutex_lock(&prom_mutex);
+    (*field)++;
+    pthread_mutex_unlock(&prom_mutex);
+}
+
+void prometheus_inc_uart_frame(void) {
+    inc_ulong_metric(&prom_state.uart_frames_total);
+}
+
+void prometheus_inc_uart_unknown_frame(void) {
+    inc_ulong_metric(&prom_state.uart_unknown_frames_total);
+}
+
+void prometheus_inc_uart_alarm_report(void) {
+    inc_ulong_metric(&prom_state.uart_alarm_reports_total);
+}
+
+void prometheus_inc_uart_hangup(void) {
+    inc_ulong_metric(&prom_state.uart_hangups_total);
+}
+
+void prometheus_inc_uart_stop_ring(void) {
+    inc_ulong_metric(&prom_state.uart_stop_rings_total);
+}
+
+void prometheus_inc_uart_reset(void) {
+    inc_ulong_metric(&prom_state.uart_resets_total);
+}
+
+void prometheus_inc_uart_push_state(void) {
+    inc_ulong_metric(&prom_state.uart_push_state_total);
+}
+
+void prometheus_inc_uart_f1(void) {
+    inc_ulong_metric(&prom_state.uart_f1_total);
 }

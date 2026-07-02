@@ -7,6 +7,7 @@
 
 typedef struct {
     int open_count;
+    int f1_count;
     int video_value;
     int call_forward_value;
 } harness_state_t;
@@ -15,6 +16,12 @@ static void on_open_door(void* user_data) {
     harness_state_t* state = (harness_state_t*)user_data;
     state->open_count++;
     printf("CALLBACK open_door=%d\n", state->open_count);
+}
+
+static void on_trigger_f1(void* user_data) {
+    harness_state_t* state = (harness_state_t*)user_data;
+    state->f1_count++;
+    printf("CALLBACK trigger_f1=%d\n", state->f1_count);
 }
 
 static void on_video_enabled(int enabled, void* user_data) {
@@ -53,6 +60,7 @@ int main(void) {
     config.firmware_update_enabled = 0;
 
     callbacks.open_door = on_open_door;
+    callbacks.trigger_f1 = on_trigger_f1;
     callbacks.set_video_enabled = on_video_enabled;
     callbacks.set_call_forward_enabled = on_call_forward_enabled;
 
@@ -63,15 +71,16 @@ int main(void) {
         return 3;
     }
 
-    for (i = 0; i < 80 && (state.open_count == 0 || state.video_value != 0 ||
+    for (i = 0; i < 80 && (state.open_count == 0 || state.f1_count == 0 ||
+                           state.video_value != 0 ||
                            state.call_forward_value != 0); i++) {
         usleep(100000);
     }
 
     mqtt_publish_door_unlocked_pulse();
     mqtt_stop();
-    printf("RESULT open=%d video=%d call_forward=%d\n",
-           state.open_count, state.video_value, state.call_forward_value);
-    return (state.open_count == 1 && state.video_value == 0 &&
+    printf("RESULT open=%d f1=%d video=%d call_forward=%d\n",
+           state.open_count, state.f1_count, state.video_value, state.call_forward_value);
+    return (state.open_count == 1 && state.f1_count == 1 && state.video_value == 0 &&
             state.call_forward_value == 0) ? 0 : 1;
 }

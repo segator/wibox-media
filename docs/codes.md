@@ -25,8 +25,8 @@ Given code `FB 20 00`, CRC last value = `B + 20 + 00` = `0x2B`.
 | `FB 15 03 23` | in | CallGuard_Error_2 | Guardian not available. |
 | `FB 16 00 21` | in | MCU_STATE 0x00 | unknown, appears after init |
 | `FB 16 01 22` | in | MCU_STATE 0x01 | After clicking button P2 (reset). LED blinks to red. |
-| `FB 17 00 22` | out | F1FuncOff | Turn off relay F1 button. |
-| `FB 17 01 23` | out | CallF1Func | Turn on relay F1 button. |
+| `FB 17 00 22` | out | F1FuncOff | Turn off optional F1 auxiliary relay/function. |
+| `FB 17 01 23` | out | CallF1Func | Turn on optional F1 auxiliary relay/function. This is not the main door opener; Fermax uses F1/F2 for installation-specific extras such as an additional door, lights or lift relay. |
 | `FB 18 04 27` | in | SAVE_ADDR 0x04 | Appears after configuring with button P2 and pressing the intercom button. |
 | `FB 18 5E 81` | in | SAVE_ADDR 0x5e | Unknown. Appears after init. |
 | `FB 19 00 24` | in/out | PUSH_STATE 0x00 | Physical call-forward state off, observed when the WiBox forward button is toggled. Also sent by Sofia `SetPushState(0)`. This is not a doorbell event. |

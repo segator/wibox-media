@@ -74,6 +74,19 @@ DTMF # or MQTT door/open/set=PRESS
   -> door/unlocked pulses ON then OFF
 ```
 
+Auxiliary F1:
+
+```text
+MQTT f1/trigger/set=PRESS
+  -> FB 17 01 23 to /dev/ttySGK1
+  -> 500 ms delay
+  -> FB 17 00 22 to /dev/ttySGK1
+```
+
+F1 is an optional Fermax auxiliary relay function. It is exposed as a Home
+Assistant button because the daemon has no reliable feedback state for the
+physical relay.
+
 ## MQTT / Home Assistant
 
 The daemon contains a small native MQTT 3.1.1 client. It does not package or
@@ -89,6 +102,7 @@ Primary entities:
 
 ```text
 button.open_door
+button.f1_function
 sensor.media_state
 sensor.firmware_version
 sensor.firmware_commit
@@ -182,3 +196,7 @@ The production image should contain:
 It should not contain legacy listener scripts, web UI runtime scripts,
 `mosquitto_*`, `ipctool`, SSH client tools, `audio_bridge`,
 `video_rtp_bridge`, `sip_media`, or updater shell wrappers.
+
+The watchdog rotates `/var/log/wibox-media-daemon.log` to
+`/var/log/wibox-media-daemon.log.old` once it grows beyond 100 KB. `/var` is a
+RAM filesystem on the WiBox, so logs do not consume flash.

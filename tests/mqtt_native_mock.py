@@ -93,6 +93,7 @@ def broker(published):
                         sent_commands = True
                         conn.sendall(publish("wibox/test/video/enabled/set", "OFF"))
                         conn.sendall(publish("wibox/test/call_forward/enabled/set", "OFF"))
+                        conn.sendall(publish("wibox/test/f1/trigger/set", "PRESS"))
                         conn.sendall(publish("wibox/test/door/open/set", "PRESS"))
                 elif typ == 0xC0:
                     conn.sendall(packet(0xD0))
@@ -161,6 +162,9 @@ def main():
         return 1
     if not any(topic.endswith("_call_forward_enabled/config") for topic, _ in published):
         print("missing call forward Home Assistant discovery publish", file=sys.stderr)
+        return 1
+    if not any(topic.endswith("_f1_function/config") for topic, _ in published):
+        print("missing F1 function Home Assistant discovery publish", file=sys.stderr)
         return 1
     if ("wibox/test/call_forward/enabled", "ON") not in published:
         print("missing retained call forward initial state", file=sys.stderr)

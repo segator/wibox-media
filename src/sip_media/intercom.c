@@ -19,6 +19,8 @@ static intercom_command_def_t command_defs[] = {
     {INTERCOM_CMD_STOP_CALL,         "STOP_CALL",         {0xFB, 0x14, 0x00, 0x1F}},
     {INTERCOM_CMD_ENABLE_PUSH_STATE, "ENABLE_PUSH_STATE", {0xFB, 0x19, 0x01, 0x25}},
     {INTERCOM_CMD_DISABLE_PUSH_STATE,"DISABLE_PUSH_STATE",{0xFB, 0x19, 0x00, 0x24}},
+    {INTERCOM_CMD_F1_ON,             "F1_ON",             {0xFB, 0x17, 0x01, 0x23}},
+    {INTERCOM_CMD_F1_OFF,            "F1_OFF",            {0xFB, 0x17, 0x00, 0x22}},
 };
 
 #define NUM_COMMANDS (sizeof(command_defs) / sizeof(command_defs[0]))

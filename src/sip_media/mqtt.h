@@ -5,6 +5,7 @@
 
 typedef struct {
     void (*open_door)(void* user_data);
+    void (*trigger_f1)(void* user_data);
     void (*set_video_enabled)(int enabled, void* user_data);
     void (*set_call_forward_enabled)(int enabled, void* user_data);
 } mqtt_callbacks_t;

@@ -474,6 +474,26 @@ static void publish_button_config(void) {
     mqtt_publish_raw(topic, payload, 1);
 }
 
+static void publish_f1_button_config(void) {
+    char topic[256];
+    char command_topic[256];
+    char uid[192];
+    char dev[512];
+    char payload[1536];
+
+    discovery_topic(topic, sizeof(topic), "button", "f1_function");
+    topic_path(command_topic, sizeof(command_topic), "f1/trigger/set");
+    unique_id(uid, sizeof(uid), "f1_function");
+    device_json(dev, sizeof(dev));
+
+    snprintf(payload, sizeof(payload),
+             "{\"name\":\"F1 Function\",\"unique_id\":\"%s\","
+             "\"command_topic\":\"%s\",\"payload_press\":\"PRESS\","
+             "\"availability_topic\":\"%s\",\"icon\":\"mdi:electric-switch\",%s}",
+             uid, command_topic, mqtt_state.base_topic, dev);
+    mqtt_publish_raw(topic, payload, 1);
+}
+
 static void publish_firmware_update_button_config(void) {
     char topic[256];
     char command_topic[256];
@@ -813,6 +833,7 @@ void mqtt_publish_discovery(void) {
         clear_firmware_update_entities();
     }
     publish_button_config();
+    publish_f1_button_config();
     publish_sensor_config("media_state", "Media State", "media/state", "", "phone");
     publish_sensor_config("firmware_version", "Firmware Version", "firmware/version", "", "tag");
     publish_sensor_config("firmware_commit", "Firmware Commit", "firmware/commit", "", "source-commit");
@@ -938,6 +959,15 @@ static void handle_mqtt_message(const char* topic, const char* payload) {
         if (payload_is_on(payload) && mqtt_state.callbacks.open_door) {
             printf("%s: open door command received\n", MQTT_FILE);
             mqtt_state.callbacks.open_door(mqtt_state.user_data);
+        }
+        return;
+    }
+
+    topic_path(expected, sizeof(expected), "f1/trigger/set");
+    if (strcmp(topic, expected) == 0) {
+        if (payload_is_on(payload) && mqtt_state.callbacks.trigger_f1) {
+            printf("%s: F1 function command received\n", MQTT_FILE);
+            mqtt_state.callbacks.trigger_f1(mqtt_state.user_data);
         }
         return;
     }

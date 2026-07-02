@@ -116,7 +116,9 @@ static void start_video_session(const char* remote_ip, int remote_video_port);
 static void stop_video_session(void);
 static void unlock_door(const char* source);
 static void mqtt_open_door_callback(void* user_data);
+static void mqtt_trigger_f1_callback(void* user_data);
 static void mqtt_set_video_enabled_callback(int enabled, void* user_data);
+static void mqtt_set_call_forward_enabled_callback(int enabled, void* user_data);
 
 // Module to handle incoming requests and responses
 static pjsip_module mod_wibox = {
@@ -675,6 +677,19 @@ static void mqtt_open_door_callback(void* user_data) {
     prometheus_set_call_active(0);
 }
 
+static void mqtt_trigger_f1_callback(void* user_data) {
+    (void)user_data;
+
+    printf("MQTT F1 function requested\n");
+    if (intercom_send_command(INTERCOM_CMD_F1_ON) == 0) {
+        prometheus_inc_uart_f1();
+        usleep(500000);
+        intercom_send_command(INTERCOM_CMD_F1_OFF);
+    } else {
+        printf("Failed to trigger F1 function\n");
+    }
+}
+
 static void mqtt_set_video_enabled_callback(int enabled, void* user_data) {
     (void)user_data;
     app_config.video_enabled = enabled ? 1 : 0;
@@ -1035,33 +1050,39 @@ static void handle_uart_frame(const unsigned char frame[4]) {
     const uart_code_def_t* def = find_uart_code(frame);
 
     if (!def) {
+        prometheus_inc_uart_unknown_frame();
         PJ_LOG(3,(THIS_FILE, "UART code unknown: %02X %02X %02X %02X",
                   frame[0], frame[1], frame[2], frame[3]));
         return;
     }
 
+    prometheus_inc_uart_frame();
     PJ_LOG(3,(THIS_FILE, "UART code received: %s [%02X %02X %02X %02X]",
               def->name, frame[0], frame[1], frame[2], frame[3]));
 
     switch (def->code) {
     case UART_CODE_ALARM_REPORT:
+        prometheus_inc_uart_alarm_report();
         report_alarm_event(1);
         handle_ding_trigger("serial alarm");
         break;
     case UART_CODE_HANG_UP_0:
     case UART_CODE_HANG_UP_1:
+        prometheus_inc_uart_hangup();
         report_alarm_event(2);
         mqtt_publish_ringing(0);
         mqtt_publish_media_state("idle");
         terminate_call_from_serial(def->name);
         break;
     case UART_CODE_CMD_STOP_RING:
+        prometheus_inc_uart_stop_ring();
         report_alarm_event(3);
         mqtt_publish_ringing(0);
         mqtt_publish_media_state("idle");
         terminate_call_from_serial(def->name);
         break;
     case UART_CODE_CMD_RESET:
+        prometheus_inc_uart_reset();
         PJ_LOG(2,(THIS_FILE, "Reset command received from panel"));
         system("sync && reboot");
         break;
@@ -1070,10 +1091,12 @@ static void handle_uart_frame(const unsigned char frame[4]) {
         mqtt_publish_call_active(1);
         break;
     case UART_CODE_PUSH_STATE_0:
+        prometheus_inc_uart_push_state();
         PJ_LOG(3,(THIS_FILE, "Intercom call forwarding state is inactive"));
         mqtt_publish_call_forward_enabled(0);
         break;
     case UART_CODE_PUSH_STATE_1:
+        prometheus_inc_uart_push_state();
         PJ_LOG(3,(THIS_FILE, "Intercom call forwarding state is active"));
         mqtt_publish_call_forward_enabled(1);
         break;
@@ -1530,6 +1553,15 @@ static pj_bool_t on_rx_response(pjsip_rx_data *rdata) {
 static pj_bool_t on_rx_request(pjsip_rx_data *rdata) {
     pjsip_method *method = &rdata->msg_info.msg->line.req.method;
 
+    if (method->name.slen == 7 &&
+        strncmp(method->name.ptr, "OPTIONS", 7) == 0) {
+        PJ_LOG(4,(THIS_FILE, "SIP OPTIONS keepalive from %s:%d",
+                  pj_inet_ntoa(rdata->pkt_info.src_addr.ipv4.sin_addr),
+                  pj_ntohs(rdata->pkt_info.src_addr.ipv4.sin_port)));
+        pjsip_endpt_respond_stateless(sip_endpt, rdata, 200, NULL, NULL, NULL);
+        return PJ_TRUE;
+    }
+
     // Add detailed logging - simplified
     PJ_LOG(3,(THIS_FILE, "=== SIP REQUEST RECEIVED ==="));
     PJ_LOG(3,(THIS_FILE, "Method: %.*s", method->name.slen, method->name.ptr));
@@ -1569,11 +1601,6 @@ static pj_bool_t on_rx_request(pjsip_rx_data *rdata) {
         PJ_LOG(3,(THIS_FILE, "Processing INFO request"));
         handle_sip_info_dtmf(rdata);
 
-    } else if (method->name.slen == 7 &&
-               strncmp(method->name.ptr, "OPTIONS", 7) == 0) {
-        PJ_LOG(3,(THIS_FILE, "Processing OPTIONS request"));
-        pjsip_endpt_respond_stateless(sip_endpt, rdata, 200, NULL, NULL, NULL);
-
     } else {
         PJ_LOG(3,(THIS_FILE, "Unsupported method: %.*s", method->name.slen, method->name.ptr));
         pjsip_endpt_respond_stateless(sip_endpt, rdata, 405, NULL, NULL, NULL);
@@ -1612,6 +1639,7 @@ int main(int argc, char *argv[]) {
 
     memset(&mqtt_callbacks, 0, sizeof(mqtt_callbacks));
     mqtt_callbacks.open_door = mqtt_open_door_callback;
+    mqtt_callbacks.trigger_f1 = mqtt_trigger_f1_callback;
     mqtt_callbacks.set_video_enabled = mqtt_set_video_enabled_callback;
     mqtt_callbacks.set_call_forward_enabled = mqtt_set_call_forward_enabled_callback;
     mqtt_init(&app_config, local_ip, &mqtt_callbacks, NULL);

@@ -8,7 +8,7 @@ The firmware provides:
 
 - SIP audio calls with PCMA RTP;
 - optional H.264 D1 video from the main encoder;
-- DTMF `#` and MQTT door unlock;
+- DTMF `#`, MQTT door unlock and optional Fermax F1 auxiliary relay trigger;
 - Home Assistant discovery over MQTT;
 - Prometheus metrics;
 - firmware update checks and installs from Home Assistant or the WiBox shell.
