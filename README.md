@@ -29,7 +29,7 @@ This project builds on prior reverse engineering work:
 ## Current Release
 
 <!-- x-release-please-start-version -->
-[v0.7.0](https://github.com/segator/wibox-media/releases/tag/v0.5.3) <!-- x-release-please-version -->
+[v0.7.0](https://github.com/segator/wibox-media/releases/latest) <!-- x-release-please-version -->
 <!-- x-release-please-end -->
 
 ```bash
