@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/segator/wibox-media/compare/v0.7.0...v0.8.0) (2026-07-02)
+
+
+### Features
+
+* default video bitrate to 4096 ([4adbf88](https://github.com/segator/wibox-media/commit/4adbf88d9da1319dbc6ed46e3dc884ce0de7051d))
+* improve video startup and bitrate ([4a100b9](https://github.com/segator/wibox-media/commit/4a100b91ebf68d902320ce0e24b2d13cc89598f1))
+
 ## [0.7.0](https://github.com/segator/wibox-media/compare/v0.6.1...v0.7.0) (2026-07-02)
 
 
