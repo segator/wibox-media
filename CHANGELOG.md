@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/segator/wibox-media/compare/v0.6.0...v0.6.1) (2026-07-02)
+
+
+### Bug Fixes
+
+* clear legacy last ring discovery ([2afa6c1](https://github.com/segator/wibox-media/commit/2afa6c176e8e2df0ed14a752e2396365cd0687a3))
+
 ## [0.6.0](https://github.com/segator/wibox-media/compare/v0.5.3...v0.6.0) (2026-07-02)
 
 
