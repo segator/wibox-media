@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/segator/wibox-media/compare/v0.5.3...v0.6.0) (2026-07-02)
+
+
+### Features
+
+* add call forward control switch ([d592e09](https://github.com/segator/wibox-media/commit/d592e090a74bc789ddd6e28b2f433148b813072e))
+
 ## [0.5.3](https://github.com/segator/wibox-media/compare/v0.5.2...v0.5.3) (2026-07-01)
 
 
