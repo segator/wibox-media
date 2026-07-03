@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.11.0](https://github.com/segator/wibox-media/compare/v0.10.0...v0.11.0) (2026-07-03)
+
+
+### Features
+
+* add automatic ring snapshots ([9183196](https://github.com/segator/wibox-media/commit/918319606a3691d509634b02ddf194edf8070e0f))
+* add call forward control switch ([d592e09](https://github.com/segator/wibox-media/commit/d592e090a74bc789ddd6e28b2f433148b813072e))
+* add f1 control and uart metrics ([eb63779](https://github.com/segator/wibox-media/commit/eb63779f0633e7cc8b2c8cc9c67d580a95f16630))
+* add firmware update refresh button ([5a87b6c](https://github.com/segator/wibox-media/commit/5a87b6c6b273bb314d9c04289926b404adbbe471))
+* add Prometheus exporter ([5839e17](https://github.com/segator/wibox-media/commit/5839e17f0239b91f5d1c09242ea70e4077dcd5e0))
+* add snapshots and retained media controls ([0a0435b](https://github.com/segator/wibox-media/commit/0a0435b7b29315a8af1540452913ff9a2bcc0d67))
+* default video bitrate to 4096 ([4adbf88](https://github.com/segator/wibox-media/commit/4adbf88d9da1319dbc6ed46e3dc884ce0de7051d))
+* improve video startup and bitrate ([4a100b9](https://github.com/segator/wibox-media/commit/4a100b91ebf68d902320ce0e24b2d13cc89598f1))
+* prepare WiBox deployment release ([7a01a3c](https://github.com/segator/wibox-media/commit/7a01a3cb13f70cd4dcf9c92c61a1c0cb8184501c))
+* wibox-media - WiBox custom firmware builder with sofia_trace ([fd368bf](https://github.com/segator/wibox-media/commit/fd368bfce52b4151e5b57a9a3c77f9524b97b380))
+
+
+### Bug Fixes
+
+* block duplicate firmware update installs ([71e17a2](https://github.com/segator/wibox-media/commit/71e17a2f8c62fe27e0b03f5bd93672ccaaf19392))
+* cancel unanswered outgoing calls ([528cc42](https://github.com/segator/wibox-media/commit/528cc422c8818217ac0e82c24d36406a76bbc51f))
+* clarify first install image transfer ([35da324](https://github.com/segator/wibox-media/commit/35da32463d14f2435b849fb11264072e02f9fac6))
+* clear call active after mqtt unlock ([af3dd52](https://github.com/segator/wibox-media/commit/af3dd522208ce7f4f520c22396fcab870e4d1b55))
+* clear legacy last ring discovery ([2afa6c1](https://github.com/segator/wibox-media/commit/2afa6c176e8e2df0ed14a752e2396365cd0687a3))
+* disable firmware update button when current ([79089a9](https://github.com/segator/wibox-media/commit/79089a988dc8042356ed83eae47c00812f8ae02c))
+* disable snapshot button while capture runs ([c2067a0](https://github.com/segator/wibox-media/commit/c2067a0982f7c0d6660bb246862cf7038bdba62b))
+* disable wifi power save at runtime ([24b9b79](https://github.com/segator/wibox-media/commit/24b9b79a61cc61feedd989039c895e5396466b0d))
+* improve audio RTP pacing and HA timestamps ([c626807](https://github.com/segator/wibox-media/commit/c6268078fe71a1441ebe3f82c1bd696fc2987881))
+* make firmware updates use mtd erase path ([a705ef0](https://github.com/segator/wibox-media/commit/a705ef0dd3529b5cb41ac3081fd339f6da258d99))
+* **mqtt:** simplify lifecycle state and timestamps ([0aa1b99](https://github.com/segator/wibox-media/commit/0aa1b99cc770b8acae5f11ac7efd70fe6ef57dc9))
+* package current default media config ([aaf59aa](https://github.com/segator/wibox-media/commit/aaf59aa283ba5b64dc66e7d58e896b5849d6cf8c))
+* pin firmware build dependencies ([92306cf](https://github.com/segator/wibox-media/commit/92306cf82e23731815f2965db077a75c8a9e016c))
+* publish wall-clock event timestamps with offset ([df4040c](https://github.com/segator/wibox-media/commit/df4040c42512d9ecf3cdb5c3ec33b9ce35933c3f))
+* respond to SIP OPTIONS requests ([90661f1](https://github.com/segator/wibox-media/commit/90661f1fb66ff24ea25df7162df98189eb83277b))
+* use timezone config for HA event timestamps ([490e5de](https://github.com/segator/wibox-media/commit/490e5de006e7ef5df511707078efabfea148906e))
+* use verified firmware update writes ([b692f7d](https://github.com/segator/wibox-media/commit/b692f7d4897abf83c14b93fff04e7b4d5d7f29bc))
+* wait for WiFi IP before SIP startup ([4be7cf7](https://github.com/segator/wibox-media/commit/4be7cf7f98c855557918cda9bc9a5f12a80fd8ac))
+
 ## [0.10.0](https://github.com/segator/wibox-media/compare/v0.9.0...v0.10.0) (2026-07-03)
 
 
