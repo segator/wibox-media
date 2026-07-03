@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/segator/wibox-media/compare/v0.8.0...v0.9.0) (2026-07-03)
+
+
+### Features
+
+* add snapshots and retained media controls ([0a0435b](https://github.com/segator/wibox-media/commit/0a0435b7b29315a8af1540452913ff9a2bcc0d67))
+
 ## [0.8.0](https://github.com/segator/wibox-media/compare/v0.7.0...v0.8.0) (2026-07-02)
 
 
