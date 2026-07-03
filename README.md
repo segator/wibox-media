@@ -32,11 +32,11 @@ This project builds on prior reverse engineering work:
 ## Current Release
 
 <!-- x-release-please-start-version -->
-[v0.11.0](https://github.com/segator/wibox-media/releases/latest) <!-- x-release-please-version -->
+[v0.12.0](https://github.com/segator/wibox-media/releases/latest) <!-- x-release-please-version -->
 <!-- x-release-please-end -->
 
 ```bash
-VERSION="v0.11.0"  # x-release-please-version
+VERSION="v0.12.0"  # x-release-please-version
 wget -O wibox-media.img "https://github.com/segator/wibox-media/releases/download/${VERSION}/wibox-media-${VERSION}.img"
 ```
 

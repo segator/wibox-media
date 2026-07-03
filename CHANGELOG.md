@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0](https://github.com/segator/wibox-media/compare/v0.11.0...v0.12.0) (2026-07-03)
+
+
+### Features
+
+* tune h264 encoder idr handling ([20b26b7](https://github.com/segator/wibox-media/commit/20b26b7320526f7320ef2334b38e843cabca706d))
+
+
+### Bug Fixes
+
+* reduce intercom audio pops ([225f4c7](https://github.com/segator/wibox-media/commit/225f4c7a5ad282941c7aba36e30d128dfc1a3162))
+
 ## [0.11.0](https://github.com/segator/wibox-media/compare/v0.10.0...v0.11.0) (2026-07-03)
 
 
