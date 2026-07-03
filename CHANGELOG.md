@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/segator/wibox-media/compare/v0.10.0...v0.11.0) (2026-07-03)
+
+
+### Features
+
+* add shared RTSP media service ([57a1526](https://github.com/segator/wibox-media/commit/57a152688adf5b473b14b943ce9476a3735d9c5c))
+
 ## [0.10.0](https://github.com/segator/wibox-media/compare/v0.9.0...v0.10.0) (2026-07-03)
 
 
