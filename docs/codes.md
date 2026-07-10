@@ -12,9 +12,9 @@ Given code `FB 20 00`, CRC last value = `B + 20 + 00` = `0x2B`.
 | Code | Direction | Name | Description |
 |------|-----------|------|-------------|
 | `FB 00 00 FF` | in | unknown | Unknown, appeared after closing call. |
-| `FB 10 00 1B` | out | unknown | Set after rebooting - CRecord::SetMode(2) |
-| `FB 10 04 1F` | out | CUart::Start | Initialize the hardware? Run at Sofia start. |
-| `FB 10 5E 79` | out | Unknown | Unknown. Appears after init. |
+| `FB 10 00 1B` | out | SysUpToMcu state 0x00 | Observed from Sofia. Not emitted by `wibox-media-daemon`. |
+| `FB 10 04 1F` | out | SysUpToMcu state 0x04 | Observed from Sofia. Not emitted by `wibox-media-daemon`. |
+| `FB 10 5E 79` | out | SysUpToMcu state 0x5e | Observed from Sofia. Not emitted by `wibox-media-daemon`. |
 | `FB 11 00 1C` | in | AlarmReport | Calling at door from the outside. Additional params: ch = 1 |
 | `FB 12 01 1E` | out | TRANSFER_CMD_UNLOCK_DOOR | Open the door, relay NO 1. |
 | `FB 13 00 1E` | in | HANG_UP 0x00 | Received when door times out without response (30 seconds) |
@@ -44,3 +44,8 @@ Other unknown found:
 CMD_FACTORY_MODE 0x%02x
 AACB version 20190802 `FD 32 30 31 39 30 38 30 32 00`
 ```
+
+Sofia creates a timer named `SysUpToMcu` with a 2000 ms period. Its callback
+builds an `FB 10 <state> <checksum>` frame from mutable internal state. There is
+no evidence that this heartbeat is required by the custom firmware, so it is
+documented but intentionally not replicated.

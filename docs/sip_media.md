@@ -286,6 +286,21 @@ Commands sent by the daemon are published on the same topics with
 `direction: "out"`, for example `START_CALL`, `STOP_CALL`, `UNLOCK_DOOR` and
 `ENABLE_PUSH_STATE`.
 
+The daemon deliberately does not reproduce the Sofia `FB 10 xx` traffic:
+
+```text
+FB 10 00 1B
+FB 10 04 1F
+FB 10 5E 79
+```
+
+Reverse engineering shows that Sofia registers its UART receiver and schedules
+a `SysUpToMcu` callback every 2000 ms. That callback sends an `FB 10 <state>`
+frame whose state byte is mutable. Its practical purpose is not proven and the
+current product flow does not need it, so sending one-shot probes or a periodic
+heartbeat would add hardware risk without a demonstrated benefit. See
+`research/SOFIA_HARDWARE_INTERACTIONS.md`.
+
 Real outside-panel calls must arrive as `ALARM_REPORT`. If pressing the physical
 WiBox forward button only produces `PUSH_STATE_0` / `PUSH_STATE_1`, that only
 proves the call-forward button is being read. It does not prove the WiBox is

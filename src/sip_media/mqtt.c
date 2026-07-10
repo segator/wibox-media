@@ -595,12 +595,20 @@ static void publish_uart_event_config(void) {
     snprintf(payload, sizeof(payload),
              "{\"name\":\"UART Event\",\"unique_id\":\"%s\","
              "\"state_topic\":\"%s\",\"availability_topic\":\"%s\","
-             "\"event_types\":[\"raw_read\",\"alarm_report\",\"cmd_reset\","
+             "\"event_types\":[\"raw_read\",\"raw_fc\",\"aacb_version\","
+             "\"unknown_uart\",\"alarm_report\",\"alarm_report_1\",\"cmd_reset\","
              "\"unlock_door\",\"start_call\",\"stop_call\",\"enable_push_state\","
-             "\"disable_push_state\",\"f1_on\",\"f1_off\",\"hang_up_0\","
-             "\"hang_up_1\",\"physical_handset_answered\",\"push_state_0\",\"push_state_1\","
-             "\"mcu_state_0\",\"mcu_state_1\",\"cmd_down_long_1\","
-             "\"cmd_down_long_2\",\"unknown_fb\"],"
+             "\"disable_push_state\",\"f1_on\",\"f1_off\",\"stream_reader_0\","
+             "\"stream_reader\",\"call_guard_error_3\",\"call_guard\","
+             "\"hang_up_0\",\"hang_up_1\",\"hang_up_2\",\"hang_up\","
+             "\"physical_handset_answered\",\"cmd_stop_ring\",\"cmd_stop_ring_1\",\"push_state_0\","
+             "\"push_state_1\",\"push_state\",\"mcu_state_0\",\"mcu_state_1\","
+             "\"mcu_state\",\"save_addr_1\",\"save_addr\",\"sta_to_ap\","
+             "\"cmd_down_long_1\",\"cmd_down_long_2\",\"cmd_down_long\","
+             "\"cmd_factory_mode_1\",\"cmd_factory_mode_2\","
+             "\"cmd_factory_mode_3\",\"cmd_factory_mode\","
+             "\"cmd_fac_ssid_postfix_0\",\"cmd_fac_ssid_postfix\","
+             "\"cmd_debug_test\",\"unknown_fb\"],"
              "\"icon\":\"mdi:serial-port\",%s}",
              uid, state_topic, mqtt_state.base_topic, dev);
     mqtt_publish_raw(topic, payload, 1);

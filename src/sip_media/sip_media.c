@@ -178,7 +178,7 @@ static void* ding_monitor_thread_func(void* arg);
 static int start_ding_monitoring(void);
 static void stop_ding_monitoring(void);
 static void handle_ding_trigger(const char* source);
-static void handle_uart_frame(const unsigned char frame[4]);
+static void handle_uart_frame(const unsigned char* frame, size_t frame_len);
 static void handle_audio_test_control(const char* message);
 static void handle_video_test_control(const char* message);
 static void* serial_monitor_thread_func(void* arg);
@@ -2004,7 +2004,7 @@ static void handle_control_message(const char* message) {
     if (parse_uart_control_frame(message, frame) == 0) {
         PJ_LOG(3,(THIS_FILE, "Injecting UART frame from control pipe: %02X %02X %02X %02X",
                   frame[0], frame[1], frame[2], frame[3]));
-        handle_uart_frame(frame);
+        handle_uart_frame(frame, 4);
         return;
     }
 
@@ -2124,17 +2124,34 @@ static void stop_ding_monitoring(void) {
 typedef enum {
     UART_CODE_UNKNOWN = 0,
     UART_CODE_ALARM_REPORT,
+    UART_CODE_ALARM_REPORT_1,
     UART_CODE_CMD_RESET,
+    UART_CODE_STREAM_READER_0,
+    UART_CODE_STREAM_READER,
     UART_CODE_START_CALL,
+    UART_CODE_CALL_GUARD_ERROR_3,
+    UART_CODE_CALL_GUARD,
     UART_CODE_HANG_UP_0,
     UART_CODE_HANG_UP_1,
+    UART_CODE_HANG_UP_2,
+    UART_CODE_CMD_STOP_RING_1,
     UART_CODE_PHYSICAL_HANDSET_ANSWERED,
     UART_CODE_PUSH_STATE_0,
     UART_CODE_PUSH_STATE_1,
     UART_CODE_MCU_STATE_0,
     UART_CODE_MCU_STATE_1,
+    UART_CODE_SAVE_ADDR_1,
+    UART_CODE_SAVE_ADDR,
+    UART_CODE_STA_TO_AP,
     UART_CODE_CMD_DOWN_LONG_1,
-    UART_CODE_CMD_DOWN_LONG_2
+    UART_CODE_CMD_DOWN_LONG_2,
+    UART_CODE_CMD_FACTORY_MODE,
+    UART_CODE_CMD_FACTORY_MODE_1,
+    UART_CODE_CMD_FACTORY_MODE_2,
+    UART_CODE_CMD_FACTORY_MODE_3,
+    UART_CODE_CMD_FAC_SSID_POSTFIX_0,
+    UART_CODE_CMD_FAC_SSID_POSTFIX,
+    UART_CODE_CMD_DEBUG_TEST
 } uart_code_t;
 
 typedef struct {
@@ -2146,10 +2163,15 @@ typedef struct {
 
 static const uart_code_def_t uart_codes[] = {
     {UART_CODE_ALARM_REPORT,    "ALARM_REPORT",    "alarm_report",    {0xFB, 0x11, 0x00, 0x1C}},
+    {UART_CODE_ALARM_REPORT_1,  "ALARM_REPORT_1",  "alarm_report_1",  {0xFB, 0x11, 0x01, 0x1D}},
     {UART_CODE_CMD_RESET,       "CMD_RESET",       "cmd_reset",       {0xFB, 0x20, 0x00, 0x2B}},
+    {UART_CODE_STREAM_READER_0, "STREAM_READER_0", "stream_reader_0", {0xFB, 0x14, 0x00, 0x1F}},
     {UART_CODE_START_CALL,      "START_CALL",      "start_call",      {0xFB, 0x14, 0x01, 0x20}},
+    {UART_CODE_CALL_GUARD_ERROR_3,"CALL_GUARD_ERROR_3","call_guard_error_3",{0xFB, 0x15, 0x03, 0x23}},
     {UART_CODE_HANG_UP_0,       "HANG_UP_0",       "hang_up_0",       {0xFB, 0x13, 0x00, 0x1E}},
     {UART_CODE_HANG_UP_1,       "HANG_UP_1",       "hang_up_1",       {0xFB, 0x13, 0x01, 0x1F}},
+    {UART_CODE_HANG_UP_2,       "HANG_UP_2",       "hang_up_2",       {0xFB, 0x13, 0x02, 0x20}},
+    {UART_CODE_CMD_STOP_RING_1, "CMD_STOP_RING_1", "cmd_stop_ring_1", {0xFB, 0x23, 0x01, 0x2F}},
     {UART_CODE_PHYSICAL_HANDSET_ANSWERED,
      "PHYSICAL_HANDSET_ANSWERED",
      "physical_handset_answered",
@@ -2158,8 +2180,15 @@ static const uart_code_def_t uart_codes[] = {
     {UART_CODE_PUSH_STATE_1,    "PUSH_STATE_1",    "push_state_1",    {0xFB, 0x19, 0x01, 0x25}},
     {UART_CODE_MCU_STATE_0,     "MCU_STATE_0",     "mcu_state_0",     {0xFB, 0x16, 0x00, 0x21}},
     {UART_CODE_MCU_STATE_1,     "MCU_STATE_1",     "mcu_state_1",     {0xFB, 0x16, 0x01, 0x22}},
+    {UART_CODE_SAVE_ADDR_1,     "SAVE_ADDR_1",     "save_addr_1",     {0xFB, 0x18, 0x01, 0x24}},
+    {UART_CODE_STA_TO_AP,       "STA_TO_AP",       "sta_to_ap",       {0xFB, 0x21, 0x00, 0x2C}},
     {UART_CODE_CMD_DOWN_LONG_1, "CMD_DOWN_LONG_1", "cmd_down_long_1", {0xFB, 0x24, 0x01, 0x30}},
-    {UART_CODE_CMD_DOWN_LONG_2, "CMD_DOWN_LONG_2", "cmd_down_long_2", {0xFB, 0x24, 0x02, 0x31}}
+    {UART_CODE_CMD_DOWN_LONG_2, "CMD_DOWN_LONG_2", "cmd_down_long_2", {0xFB, 0x24, 0x02, 0x31}},
+    {UART_CODE_CMD_FACTORY_MODE_1,"CMD_FACTORY_MODE_1","cmd_factory_mode_1",{0xFB, 0x25, 0x01, 0x31}},
+    {UART_CODE_CMD_FACTORY_MODE_2,"CMD_FACTORY_MODE_2","cmd_factory_mode_2",{0xFB, 0x25, 0x02, 0x32}},
+    {UART_CODE_CMD_FACTORY_MODE_3,"CMD_FACTORY_MODE_3","cmd_factory_mode_3",{0xFB, 0x25, 0x03, 0x33}},
+    {UART_CODE_CMD_FAC_SSID_POSTFIX_0,"CMD_FAC_SSID_POSTFIX_0","cmd_fac_ssid_postfix_0",{0xFB, 0x26, 0x00, 0x31}},
+    {UART_CODE_CMD_DEBUG_TEST,  "CMD_DEBUG_TEST",  "cmd_debug_test",  {0xFB, 0x66, 0x00, 0x71}}
 };
 
 static const uart_code_def_t* find_uart_code(const unsigned char frame[4]) {
@@ -2171,6 +2200,108 @@ static const uart_code_def_t* find_uart_code(const unsigned char frame[4]) {
         }
     }
     return NULL;
+}
+
+static unsigned char uart_checksum(const unsigned char* data, size_t len) {
+    size_t i;
+    unsigned int sum = 0;
+
+    if (!data || len == 0) {
+        return 0;
+    }
+    for (i = 0; i < len; i++) {
+        sum += data[i];
+    }
+    return (unsigned char)(sum % 0xF0);
+}
+
+static int uart_checksum_valid(const unsigned char* frame, size_t frame_len) {
+    if (!frame || frame_len < 2) {
+        return 0;
+    }
+    return frame[frame_len - 1] == uart_checksum(frame, frame_len - 1);
+}
+
+static int describe_uart_family(const unsigned char frame[4], uart_code_t* code,
+                                const char** name, const char** event_type) {
+    if (!uart_checksum_valid(frame, 4)) {
+        return 0;
+    }
+
+    switch (frame[1]) {
+    case 0x11:
+        *code = UART_CODE_UNKNOWN;
+        *name = "ALARM_REPORT";
+        *event_type = "alarm_report";
+        return 1;
+    case 0x13:
+        *code = UART_CODE_UNKNOWN;
+        *name = "HANG_UP";
+        *event_type = "hang_up";
+        return 1;
+    case 0x14:
+        *code = UART_CODE_STREAM_READER;
+        *name = "STREAM_READER";
+        *event_type = "stream_reader";
+        return 1;
+    case 0x15:
+        *code = UART_CODE_CALL_GUARD;
+        *name = "CALL_GUARD";
+        *event_type = "call_guard";
+        return 1;
+    case 0x16:
+        *code = UART_CODE_UNKNOWN;
+        *name = "MCU_STATE";
+        *event_type = "mcu_state";
+        return 1;
+    case 0x18:
+        *code = UART_CODE_SAVE_ADDR;
+        *name = "SAVE_ADDR";
+        *event_type = "save_addr";
+        return 1;
+    case 0x19:
+        *code = UART_CODE_UNKNOWN;
+        *name = "PUSH_STATE";
+        *event_type = "push_state";
+        return 1;
+    case 0x20:
+        *code = UART_CODE_UNKNOWN;
+        *name = "CMD_RESET";
+        *event_type = "cmd_reset";
+        return 1;
+    case 0x21:
+        *code = UART_CODE_STA_TO_AP;
+        *name = "STA_TO_AP";
+        *event_type = "sta_to_ap";
+        return 1;
+    case 0x23:
+        *code = UART_CODE_UNKNOWN;
+        *name = "CMD_STOP_RING";
+        *event_type = "cmd_stop_ring";
+        return 1;
+    case 0x24:
+        *code = UART_CODE_UNKNOWN;
+        *name = "CMD_DOWN_LONG";
+        *event_type = "cmd_down_long";
+        return 1;
+    case 0x25:
+        *code = UART_CODE_CMD_FACTORY_MODE;
+        *name = "CMD_FACTORY_MODE";
+        *event_type = "cmd_factory_mode";
+        return 1;
+    case 0x26:
+        *code = UART_CODE_CMD_FAC_SSID_POSTFIX;
+        *name = "CMD_FAC_SSID_POSTFIX";
+        *event_type = "cmd_fac_ssid_postfix";
+        return 1;
+    case 0x66:
+        *code = UART_CODE_CMD_DEBUG_TEST;
+        *name = "CMD_DEBUG_TEST";
+        *event_type = "cmd_debug_test";
+        return 1;
+    default:
+        return 0;
+    }
 }
 
 static void report_alarm_event(int event_id) {
@@ -2216,10 +2347,47 @@ static void format_uart_bytes(const unsigned char* data, size_t len, char* out, 
     out[pos] = '\0';
 }
 
-static void handle_uart_frame(const unsigned char frame[4]) {
-    const uart_code_def_t* def = find_uart_code(frame);
+static void handle_uart_frame(const unsigned char* frame, size_t frame_len) {
+    const uart_code_def_t* def;
+    uart_code_t code = UART_CODE_UNKNOWN;
+    const char* name = NULL;
+    const char* event_type = NULL;
 
-    if (!def) {
+    if (!frame || frame_len == 0) {
+        return;
+    }
+
+    if (frame[0] == 0xFC || frame[0] == 0xFD) {
+        int valid = uart_checksum_valid(frame, frame_len);
+        const char* ext_event_type = frame[0] == 0xFD ? "aacb_version" : "raw_fc";
+        const char* ext_name = frame[0] == 0xFD ? "AACB_VERSION" : "RAW_FC";
+
+        if (valid) {
+            prometheus_inc_uart_frame();
+            PJ_LOG(3,(THIS_FILE, "UART extended frame received: %s len=%zu", ext_name, frame_len));
+        } else {
+            prometheus_inc_uart_unknown_frame();
+            PJ_LOG(3,(THIS_FILE, "UART extended frame checksum mismatch: %s len=%zu", ext_name, frame_len));
+        }
+        mqtt_publish_uart_event(ext_event_type, ext_name, frame, frame_len,
+                                frame_len > 2 ? (int)frame[2] : -1, valid);
+        return;
+    }
+
+    if (frame[0] != 0xFB || frame_len != 4) {
+        prometheus_inc_uart_unknown_frame();
+        PJ_LOG(3,(THIS_FILE, "UART frame unknown: first=%02X len=%zu", frame[0], frame_len));
+        mqtt_publish_uart_event("unknown_uart", "UNKNOWN", frame, frame_len,
+                                frame_len > 2 ? (int)frame[2] : -1, 0);
+        return;
+    }
+
+    def = find_uart_code(frame);
+    if (def) {
+        code = def->code;
+        name = def->name;
+        event_type = def->event_type;
+    } else if (!describe_uart_family(frame, &code, &name, &event_type)) {
         prometheus_inc_uart_unknown_frame();
         PJ_LOG(3,(THIS_FILE, "UART code unknown: %02X %02X %02X %02X",
                   frame[0], frame[1], frame[2], frame[3]));
@@ -2229,36 +2397,41 @@ static void handle_uart_frame(const unsigned char frame[4]) {
 
     prometheus_inc_uart_frame();
     PJ_LOG(3,(THIS_FILE, "UART code received: %s [%02X %02X %02X %02X]",
-              def->name, frame[0], frame[1], frame[2], frame[3]));
-    mqtt_publish_uart_event(def->event_type, def->name, frame, 4, (int)frame[2], 1);
+              name, frame[0], frame[1], frame[2], frame[3]));
+    mqtt_publish_uart_event(event_type, name, frame, 4, (int)frame[2], 1);
 
-    switch (def->code) {
+    switch (code) {
     case UART_CODE_ALARM_REPORT:
         prometheus_inc_uart_alarm_report();
         report_alarm_event(1);
         handle_ding_trigger("serial alarm");
         break;
+    case UART_CODE_ALARM_REPORT_1:
+        prometheus_inc_uart_alarm_report();
+        break;
     case UART_CODE_HANG_UP_0:
     case UART_CODE_HANG_UP_1:
+    case UART_CODE_HANG_UP_2:
         prometheus_inc_uart_hangup();
         report_alarm_event(2);
-        invalidate_ringing_timeout(def->name);
-        clear_intercom_call_state(def->name);
+        invalidate_ringing_timeout(name);
+        clear_intercom_call_state(name);
         mqtt_publish_ringing(0);
         mqtt_publish_media_state("idle");
         prometheus_set_ringing(0);
-        terminate_call_from_serial(def->name);
+        terminate_call_from_serial(name);
         break;
+    case UART_CODE_CMD_STOP_RING_1:
     case UART_CODE_PHYSICAL_HANDSET_ANSWERED:
         prometheus_inc_uart_stop_ring();
         report_alarm_event(3);
         PJ_LOG(3,(THIS_FILE, "Physical handset answered - ending remote ringing state"));
-        invalidate_ringing_timeout(def->name);
-        clear_intercom_call_state(def->name);
+        invalidate_ringing_timeout(name);
+        clear_intercom_call_state(name);
         mqtt_publish_ringing(0);
         mqtt_publish_media_state("idle");
         prometheus_set_ringing(0);
-        terminate_call_from_serial(def->name);
+        terminate_call_from_serial(name);
         break;
     case UART_CODE_CMD_RESET:
         prometheus_inc_uart_reset();
@@ -2285,14 +2458,29 @@ static void handle_uart_frame(const unsigned char frame[4]) {
     case UART_CODE_MCU_STATE_1:
     case UART_CODE_CMD_DOWN_LONG_1:
     case UART_CODE_CMD_DOWN_LONG_2:
+    case UART_CODE_CMD_FACTORY_MODE:
+    case UART_CODE_STREAM_READER_0:
+    case UART_CODE_STREAM_READER:
+    case UART_CODE_CALL_GUARD_ERROR_3:
+    case UART_CODE_CALL_GUARD:
+    case UART_CODE_SAVE_ADDR_1:
+    case UART_CODE_SAVE_ADDR:
+    case UART_CODE_STA_TO_AP:
+    case UART_CODE_CMD_FACTORY_MODE_1:
+    case UART_CODE_CMD_FACTORY_MODE_2:
+    case UART_CODE_CMD_FACTORY_MODE_3:
+    case UART_CODE_CMD_FAC_SSID_POSTFIX_0:
+    case UART_CODE_CMD_FAC_SSID_POSTFIX:
+    case UART_CODE_CMD_DEBUG_TEST:
     default:
         break;
     }
 }
 
 static void* serial_monitor_thread_func(void* arg) {
-    unsigned char frame[4];
+    unsigned char frame[16];
     size_t frame_len = 0;
+    size_t frame_expected_len = 0;
     pj_thread_desc desc = {0};
     pj_thread_t *thread;
     pj_status_t status;
@@ -2336,15 +2524,24 @@ static void* serial_monitor_thread_func(void* arg) {
             PJ_LOG(3,(THIS_FILE, "UART raw read %zd bytes: %s", n, raw_hex));
             mqtt_publish_uart_event("raw_read", "RAW_READ", buffer, (size_t)n, -1, 0);
             for (i = 0; i < n; i++) {
-                if (frame_len == 0 && buffer[i] != 0xFB) {
-                    PJ_LOG(3,(THIS_FILE, "Ignoring UART byte before frame: %02X", buffer[i]));
-                    continue;
+                if (frame_len == 0) {
+                    if (buffer[i] == 0xFB) {
+                        frame_expected_len = 4;
+                    } else if (buffer[i] == 0xFC) {
+                        frame_expected_len = 7;
+                    } else if (buffer[i] == 0xFD) {
+                        frame_expected_len = 11;
+                    } else {
+                        PJ_LOG(3,(THIS_FILE, "Ignoring UART byte before frame: %02X", buffer[i]));
+                        continue;
+                    }
                 }
 
                 frame[frame_len++] = buffer[i];
-                if (frame_len == sizeof(frame)) {
-                    handle_uart_frame(frame);
+                if (frame_len == frame_expected_len) {
+                    handle_uart_frame(frame, frame_len);
                     frame_len = 0;
+                    frame_expected_len = 0;
                 }
             }
         } else if (n == 0) {
@@ -2356,6 +2553,7 @@ static void* serial_monitor_thread_func(void* arg) {
             close(serial_fd);
             serial_fd = -1;
             frame_len = 0;
+            frame_expected_len = 0;
             sleep(1);
         }
     }
