@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.2](https://github.com/segator/wibox-media/compare/v0.17.1...v0.17.2) (2026-07-18)
+
+
+### Bug Fixes
+
+* prevent Prometheus clients from stalling exporter ([2413370](https://github.com/segator/wibox-media/commit/2413370451cd84211add57f2844c782df3e2c781))
+* prevent Prometheus clients from stalling exporter ([da06410](https://github.com/segator/wibox-media/commit/da06410fd972b80f90d33b03ac426d0aab50f18c))
+
 ## [0.17.1](https://github.com/segator/wibox-media/compare/v0.17.0...v0.17.1) (2026-07-15)
 
 
