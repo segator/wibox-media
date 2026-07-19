@@ -15,6 +15,7 @@ typedef struct {
     void (*set_video_enabled)(int enabled, void* user_data);
     void (*set_video_bitrate)(int bitrate_kbps, void* user_data);
     void (*set_sip_outgoing_call_enabled)(int enabled, void* user_data);
+    void (*set_hangup_on_door_unlock)(int enabled, void* user_data);
     void (*set_outgoing_call_target)(const char* target_uri, void* user_data);
     void (*set_outgoing_call_timeout)(int timeout_seconds, void* user_data);
     void (*set_ring_snapshot_delay)(int delay_ms, void* user_data);
@@ -38,6 +39,7 @@ void mqtt_publish_video_active(int active);
 void mqtt_publish_video_enabled(int enabled);
 void mqtt_publish_video_bitrate(int bitrate_kbps);
 void mqtt_publish_sip_outgoing_call_enabled(int enabled);
+void mqtt_publish_hangup_on_door_unlock(int enabled);
 void mqtt_publish_outgoing_call_target(const char* target_uri);
 void mqtt_publish_outgoing_call_timeout(int timeout_seconds);
 void mqtt_publish_ring_snapshot_delay(int delay_ms);

@@ -43,6 +43,7 @@ typedef struct {
     int developer_mode_enabled;
     int video_bitrate_kbps;
     int sip_outgoing_call_enabled;
+    int hangup_on_door_unlock;
     char outgoing_call_target[256];
     int outgoing_call_timeout;
     int ring_snapshot_delay_ms;
@@ -1054,6 +1055,28 @@ static void publish_sip_outgoing_call_switch_config(void) {
     mqtt_publish_raw(topic, payload, 1);
 }
 
+static void publish_hangup_on_door_unlock_switch_config(void) {
+    char topic[256];
+    char state_topic[256];
+    char command_topic[256];
+    char uid[192];
+    char dev[512];
+    char payload[1536];
+
+    discovery_topic(topic, sizeof(topic), "switch", "hangup_on_door_unlock");
+    topic_path(state_topic, sizeof(state_topic), "call/hangup_on_door_unlock");
+    topic_path(command_topic, sizeof(command_topic), "call/hangup_on_door_unlock/set");
+    unique_id(uid, sizeof(uid), "hangup_on_door_unlock");
+    device_json(dev, sizeof(dev));
+    snprintf(payload, sizeof(payload),
+             "{\"name\":\"Hang Up on Door Unlock\",\"unique_id\":\"%s\","
+             "\"state_topic\":\"%s\",\"command_topic\":\"%s\","
+             "\"availability_topic\":\"%s\",\"payload_on\":\"ON\","
+             "\"payload_off\":\"OFF\",\"retain\":true,\"icon\":\"mdi:phone-hangup\",%s}",
+             uid, state_topic, command_topic, mqtt_state.base_topic, dev);
+    mqtt_publish_raw(topic, payload, 1);
+}
+
 static void publish_call_forward_switch_config(void) {
     char topic[256];
     char state_topic[256];
@@ -1316,6 +1339,7 @@ void mqtt_publish_discovery(void) {
     publish_video_switch_config();
     publish_rtsp_switch_config();
     publish_sip_outgoing_call_switch_config();
+    publish_hangup_on_door_unlock_switch_config();
     publish_number_config("video_bitrate", "Video Bitrate", "video/bitrate_kbps",
                           512, 4096, 256, "kbps", "video-high-definition");
     publish_outgoing_call_target_config();
@@ -1374,6 +1398,12 @@ void mqtt_publish_sip_outgoing_call_enabled(int enabled) {
                    mqtt_state.sip_outgoing_call_enabled ? "ON" : "OFF", 1);
     publish_suffix("call/outgoing_config/availability",
                    mqtt_state.sip_outgoing_call_enabled ? "online" : "offline", 1);
+}
+
+void mqtt_publish_hangup_on_door_unlock(int enabled) {
+    mqtt_state.hangup_on_door_unlock = enabled ? 1 : 0;
+    publish_suffix("call/hangup_on_door_unlock",
+                   mqtt_state.hangup_on_door_unlock ? "ON" : "OFF", 1);
 }
 
 void mqtt_publish_outgoing_call_target(const char* target_uri) {
@@ -1752,6 +1782,16 @@ static void handle_mqtt_message(const char* topic, const char* payload, int reta
         return;
     }
 
+    topic_path(expected, sizeof(expected), "call/hangup_on_door_unlock/set");
+    if (strcmp(topic, expected) == 0) {
+        if (payload_is_on(payload) && mqtt_state.callbacks.set_hangup_on_door_unlock) {
+            mqtt_state.callbacks.set_hangup_on_door_unlock(1, mqtt_state.user_data);
+        } else if (payload_is_off(payload) && mqtt_state.callbacks.set_hangup_on_door_unlock) {
+            mqtt_state.callbacks.set_hangup_on_door_unlock(0, mqtt_state.user_data);
+        }
+        return;
+    }
+
     topic_path(expected, sizeof(expected), "call/target_uri/set");
     if (strcmp(topic, expected) == 0) {
         if (mqtt_state.callbacks.set_outgoing_call_target) {
@@ -1970,6 +2010,7 @@ static void* mqtt_thread_func(void* arg) {
         mqtt_publish_developer_mode(0);
         mqtt_publish_video_bitrate(mqtt_state.video_bitrate_kbps);
         mqtt_publish_sip_outgoing_call_enabled(mqtt_state.sip_outgoing_call_enabled);
+        mqtt_publish_hangup_on_door_unlock(mqtt_state.hangup_on_door_unlock);
         mqtt_publish_outgoing_call_target(mqtt_state.outgoing_call_target);
         mqtt_publish_outgoing_call_timeout(mqtt_state.outgoing_call_timeout);
         mqtt_publish_ring_snapshot_delay(mqtt_state.ring_snapshot_delay_ms);
@@ -2032,6 +2073,7 @@ int mqtt_init(const wibox_config_t* app_config, const char* local_ip,
     mqtt_state.developer_mode_enabled = 0;
     mqtt_state.video_bitrate_kbps = app_config->video_bitrate_kbps;
     mqtt_state.sip_outgoing_call_enabled = app_config->sip_outgoing_call_enabled ? 1 : 0;
+    mqtt_state.hangup_on_door_unlock = app_config->hangup_on_door_unlock ? 1 : 0;
     strncpy(mqtt_state.outgoing_call_target, app_config->outgoing_call_target,
             sizeof(mqtt_state.outgoing_call_target) - 1);
     mqtt_state.outgoing_call_timeout = app_config->outgoing_call_timeout;

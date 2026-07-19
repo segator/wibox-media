@@ -30,6 +30,7 @@ void config_init_defaults(wibox_config_t* config) {
 
     // SIP Configuration
     config->sip_outgoing_call_enabled = 1;
+    config->hangup_on_door_unlock = 1;
     strcpy(config->outgoing_call_target, "sip:1000@192.168.0.31:5060");
     config->outgoing_call_timeout = 60;
     config->sip_port = 5060;
@@ -129,6 +130,8 @@ static int parse_config_line(const char* line, wibox_config_t* config) {
     // Parse configuration values
     if (strcmp(key, "sip_outgoing_call_enabled") == 0) {
         config->sip_outgoing_call_enabled = atoi(value) ? 1 : 0;
+    } else if (strcmp(key, "hangup_on_door_unlock") == 0) {
+        config->hangup_on_door_unlock = atoi(value) ? 1 : 0;
     } else if (strcmp(key, "outgoing_call_target") == 0) {
         strncpy(config->outgoing_call_target, value, sizeof(config->outgoing_call_target) - 1);
         config->outgoing_call_target[sizeof(config->outgoing_call_target) - 1] = '\0';
@@ -318,6 +321,7 @@ void config_print(const wibox_config_t* config) {
 
     printf("=== Current Configuration ===\n");
     printf("sip_outgoing_call_enabled = %d\n", config->sip_outgoing_call_enabled);
+    printf("hangup_on_door_unlock = %d\n", config->hangup_on_door_unlock);
     printf("outgoing_call_target = %s\n", config->outgoing_call_target);
     printf("outgoing_call_timeout = %d\n", config->outgoing_call_timeout);
     printf("sip_port = %d\n", config->sip_port);

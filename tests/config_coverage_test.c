@@ -51,6 +51,7 @@ static int test_defaults_and_missing_file(void)
     unlink(missing);
     CHECK(config_load(missing, &config) == 0);
     CHECK_INT(config, sip_outgoing_call_enabled, 1);
+    CHECK_INT(config, hangup_on_door_unlock, 1);
     CHECK_INT(config, outgoing_call_timeout, 60);
     CHECK_INT(config, video_enabled, 0);
     CHECK_INT(config, video_bitrate_kbps, 4096);
@@ -75,6 +76,7 @@ static int test_all_supported_keys(void)
         "  # whitespace and comments are accepted\n"
         "\n"
         " sip_outgoing_call_enabled = 0 \n"
+        "hangup_on_door_unlock=0\n"
         " outgoing_call_target = \"sip:2000@example.test:5070\" \n"
         "outgoing_call_timeout=45\n"
         "sip_port=5090\n"
@@ -136,6 +138,7 @@ static int test_all_supported_keys(void)
     unlink(path);
 
     CHECK_INT(config, sip_outgoing_call_enabled, 0);
+    CHECK_INT(config, hangup_on_door_unlock, 0);
     CHECK_STR(config, outgoing_call_target, "sip:2000@example.test:5070");
     CHECK_INT(config, outgoing_call_timeout, 45);
     CHECK_INT(config, sip_port, 5090);

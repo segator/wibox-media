@@ -5,6 +5,7 @@
 typedef struct {
     // SIP Configuration
     int sip_outgoing_call_enabled;
+    int hangup_on_door_unlock;
     char outgoing_call_target[256];
     int outgoing_call_timeout;
     int sip_port;

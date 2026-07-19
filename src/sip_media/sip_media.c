@@ -316,6 +316,7 @@ static void publish_snapshot_button_availability(void);
 static void mqtt_set_video_enabled_callback(int enabled, void* user_data);
 static void mqtt_set_video_bitrate_callback(int bitrate_kbps, void* user_data);
 static void mqtt_set_sip_outgoing_call_enabled_callback(int enabled, void* user_data);
+static void mqtt_set_hangup_on_door_unlock_callback(int enabled, void* user_data);
 static void mqtt_set_outgoing_call_target_callback(const char* target_uri, void* user_data);
 static void mqtt_set_outgoing_call_timeout_callback(int timeout_seconds, void* user_data);
 static void mqtt_set_ring_snapshot_delay_callback(int delay_ms, void* user_data);
@@ -1307,6 +1308,23 @@ static void unlock_door(const char* source) {
         mqtt_publish_door_unlocked_pulse();
         call_trace_record("door_opened", NULL, NULL, source, 0);
         prometheus_inc_door_unlock();
+
+        /*
+         * Opening the door completes the doorbell interaction.  In
+         * particular, an MQTT button press can happen while Asterisk is
+         * still forking the SIP call to several clients.  End our SIP leg
+         * immediately so Asterisk propagates the hangup to every remaining
+         * ringing destination.
+         */
+        if (app_config.hangup_on_door_unlock && source &&
+            strcmp(source, "mqtt") == 0 && sip_calling_is_call_active()) {
+            PJ_LOG(3, (THIS_FILE,
+                       "Door opened - terminating active SIP call"));
+            if (sip_calling_terminate_call() != PJ_SUCCESS) {
+                PJ_LOG(2, (THIS_FILE,
+                           "Failed to terminate SIP call after door unlock"));
+            }
+        }
     } else {
         printf("Failed to send door unlock command\n");
     }
@@ -1834,6 +1852,15 @@ static void mqtt_set_sip_outgoing_call_enabled_callback(int enabled, void* user_
     printf("MQTT sip_outgoing_call_enabled set to %d\n",
            app_config.sip_outgoing_call_enabled);
     mqtt_publish_sip_outgoing_call_enabled(app_config.sip_outgoing_call_enabled);
+}
+
+static void mqtt_set_hangup_on_door_unlock_callback(int enabled, void* user_data) {
+    (void)user_data;
+
+    app_config.hangup_on_door_unlock = enabled ? 1 : 0;
+    printf("MQTT hangup_on_door_unlock set to %d\n",
+           app_config.hangup_on_door_unlock);
+    mqtt_publish_hangup_on_door_unlock(app_config.hangup_on_door_unlock);
 }
 
 static void mqtt_set_outgoing_call_target_callback(const char* target_uri, void* user_data) {
@@ -3018,6 +3045,7 @@ int main(int argc, char *argv[]) {
     mqtt_callbacks.set_video_enabled = mqtt_set_video_enabled_callback;
     mqtt_callbacks.set_video_bitrate = mqtt_set_video_bitrate_callback;
     mqtt_callbacks.set_sip_outgoing_call_enabled = mqtt_set_sip_outgoing_call_enabled_callback;
+    mqtt_callbacks.set_hangup_on_door_unlock = mqtt_set_hangup_on_door_unlock_callback;
     mqtt_callbacks.set_outgoing_call_target = mqtt_set_outgoing_call_target_callback;
     mqtt_callbacks.set_outgoing_call_timeout = mqtt_set_outgoing_call_timeout_callback;
     mqtt_callbacks.set_ring_snapshot_delay = mqtt_set_ring_snapshot_delay_callback;

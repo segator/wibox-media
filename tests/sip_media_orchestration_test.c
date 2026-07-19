@@ -190,6 +190,8 @@ static void test_dtmf_paths(void) {
     int event;
 
     reset_records();
+    app_config.hangup_on_door_unlock = 1;
+    fake_sip_state = SIP_CALL_STATE_ESTABLISHED;
     for (event = DTMF_EVENT_0; event <= DTMF_EVENT_STAR; event++) {
         handle_dtmf_event((unsigned char)event, 3, 10);
     }
@@ -198,6 +200,8 @@ static void test_dtmf_paths(void) {
     handle_dtmf_event(DTMF_EVENT_HASH, 2, 20);
     CHECK(intercom_counts[INTERCOM_CMD_UNLOCK_DOOR] == 1);
     CHECK(mqtt_unlock_count == 1 && prometheus_unlock_count == 1);
+    CHECK(fake_terminate_count == 0);
+    CHECK(fake_sip_state == SIP_CALL_STATE_ESTABLISHED);
 
     memset(&request, 0, sizeof(request));
     request.msg_info.msg = &message;
@@ -277,6 +281,7 @@ static void test_audio_ownership(void) {
     reset_records();
     fake_sip_session.state = SIP_CALL_STATE_ESTABLISHED;
     fake_sip_session.remote_dtmf_payload_type = 110;
+    app_config.hangup_on_door_unlock = 1;
     fake_sip_state = SIP_CALL_STATE_ESTABLISHED;
     on_audio_ready("198.51.100.9", 9000, 0, NULL);
     CHECK(get_audio_sip_rtp_active());
@@ -399,9 +404,17 @@ static void test_mqtt_callbacks_and_runtime_config(void) {
     publish_snapshot_button_availability();
     CHECK(mqtt_snapshot_available == 0);
 
+    app_config.hangup_on_door_unlock = 1;
     fake_sip_state = SIP_CALL_STATE_ESTABLISHED;
     mqtt_open_door_callback(NULL);
     CHECK(mqtt_unlock_count == 1);
+    CHECK(fake_terminate_count == 1);
+    CHECK(fake_sip_state == SIP_CALL_STATE_IDLE);
+    app_config.hangup_on_door_unlock = 0;
+    fake_sip_state = SIP_CALL_STATE_ESTABLISHED;
+    mqtt_open_door_callback(NULL);
+    CHECK(mqtt_unlock_count == 2);
+    CHECK(fake_sip_state == SIP_CALL_STATE_ESTABLISHED);
     mqtt_reboot_device_callback(NULL);
     mqtt_reboot_device_callback(NULL);
     CHECK(reboot_count == 1 && sync_count == 1);
@@ -557,6 +570,7 @@ void mqtt_publish_video_active(int active) { mqtt_video_state = active; }
 void mqtt_publish_video_enabled(int enabled) { (void)enabled; }
 void mqtt_publish_video_bitrate(int bitrate) { (void)bitrate; }
 void mqtt_publish_sip_outgoing_call_enabled(int enabled) { (void)enabled; }
+void mqtt_publish_hangup_on_door_unlock(int enabled) { (void)enabled; }
 void mqtt_publish_outgoing_call_target(const char *target) { (void)target; }
 void mqtt_publish_outgoing_call_timeout(int timeout) { (void)timeout; }
 void mqtt_publish_ring_snapshot_delay(int delay) { (void)delay; }
