@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/segator/wibox-media/compare/v0.17.2...v0.18.0) (2026-07-20)
+
+
+### Features
+
+* configure SIP hangup on MQTT door unlock ([d583f1c](https://github.com/segator/wibox-media/commit/d583f1c96399c657039bf9c55d670ceb93e5f7b8))
+
 ## [0.17.2](https://github.com/segator/wibox-media/compare/v0.17.1...v0.17.2) (2026-07-18)
 
 
