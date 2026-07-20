@@ -18,6 +18,7 @@ typedef struct {
     int reboot_count;
     int simulate_ding_count;
     int simulate_handset_count;
+    int support_report_count;
     int sip_outgoing_enabled;
     char outgoing_target[256];
 } harness_state_t;
@@ -95,6 +96,13 @@ static void on_simulate_handset(void* user_data) {
     printf("CALLBACK simulate_handset=%d\n", state->simulate_handset_count);
 }
 
+static void on_support_report(void* user_data) {
+    harness_state_t* state = (harness_state_t*)user_data;
+    state->support_report_count++;
+    mqtt_publish_support_report("WiBox test support report\nsecret token must not be included");
+    printf("CALLBACK support_report=%d\n", state->support_report_count);
+}
+
 static void on_sip_outgoing_enabled(int enabled, void* user_data) {
     harness_state_t* state = (harness_state_t*)user_data;
     state->sip_outgoing_enabled = enabled;
@@ -153,6 +161,7 @@ int main(void) {
     callbacks.reboot_device = on_reboot;
     callbacks.simulate_ding = on_simulate_ding;
     callbacks.simulate_handset_answered = on_simulate_handset;
+    callbacks.create_support_report = on_support_report;
     callbacks.set_video_enabled = on_video_enabled;
     callbacks.set_rtsp_enabled = on_rtsp_enabled;
     callbacks.set_video_bitrate = on_video_bitrate;
@@ -180,6 +189,7 @@ int main(void) {
                            state.reboot_count != 1 ||
                            state.simulate_ding_count != 1 ||
                            state.simulate_handset_count != 1 ||
+                           state.support_report_count != 1 ||
                            state.sip_outgoing_enabled != 0 ||
                            strcmp(state.outgoing_target, "sip:3000@example.test") != 0); i++) {
         usleep(100000);

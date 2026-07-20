@@ -6,6 +6,7 @@
 #include <unistd.h>          // UNIX standard functions
 #include <signal.h>          // Signal handling
 #include <string.h>          // String functions
+#include <strings.h>         // Case-insensitive string functions
 #include <sys/socket.h>      // Socket functions
 #include <netinet/in.h>      // Internet address family
 #include <arpa/inet.h>       // Internet operations
@@ -40,6 +41,12 @@
 #define SNAPSHOT_PATH "/tmp/wibox-snapshot.jpg"
 #define SNAPSHOT_LOG_PATH "/tmp/wibox-snapshot-worker.log"
 #define AUDIO_LINE_MUTE_MAX_MS 3000
+#ifndef WIBOX_VERSION
+#define WIBOX_VERSION "dev-unknown"
+#endif
+#ifndef WIBOX_COMMIT
+#define WIBOX_COMMIT "unknown"
+#endif
 #ifndef WIFI_AP_REQUEST_PATH
 #define WIFI_AP_REQUEST_PATH "/mnt/mtd/wifi_ap_requested"
 #endif
@@ -309,6 +316,7 @@ static void mqtt_reboot_device_callback(void* user_data);
 static void mqtt_take_snapshot_callback(void* user_data);
 static void mqtt_simulate_ding_callback(void* user_data);
 static void mqtt_simulate_handset_answered_callback(void* user_data);
+static void mqtt_create_support_report_callback(void* user_data);
 static int start_snapshot_capture(int open_panel_context, unsigned int delay_ms,
                                   const char* reason, int start_rtsp_after);
 static void* snapshot_thread_func(void* arg);
@@ -1546,6 +1554,79 @@ static void mqtt_simulate_handset_answered_callback(void* user_data) {
         mute_audio_input_for_ms(app_config.audio_line_mute_ms,
                                 "simulated-handset-stop");
         close_intercom_call("developer-simulated-handset-answered");
+    }
+}
+
+#define SUPPORT_REPORT_MAX 6000
+
+static int contains_support_marker(const char* line, const char* marker) {
+    size_t marker_len;
+    size_t i;
+
+    if (!line || !marker) return 0;
+    marker_len = strlen(marker);
+    for (i = 0; line[i]; i++) {
+        if (strncasecmp(line + i, marker, marker_len) == 0) return 1;
+    }
+    return 0;
+}
+
+static void append_support_log(char* report, size_t report_size,
+                               const char* label, const char* path,
+                               size_t max_bytes) {
+    FILE* fp;
+    long file_size;
+    long start;
+    char line[256];
+    size_t used = strlen(report);
+
+    if (used >= report_size) return;
+    used += (size_t)snprintf(report + used, report_size - used, "\n--- %s ---\n", label);
+    fp = fopen(path, "r");
+    if (!fp) {
+        snprintf(report + used, report_size - used, "unavailable (%s)\n", strerror(errno));
+        return;
+    }
+    if (fseek(fp, 0, SEEK_END) != 0 || (file_size = ftell(fp)) < 0) {
+        fclose(fp);
+        return;
+    }
+    start = file_size > (long)max_bytes ? file_size - (long)max_bytes : 0;
+    if (fseek(fp, start, SEEK_SET) != 0) {
+        fclose(fp);
+        return;
+    }
+    if (start > 0) {
+        (void)fgets(line, sizeof(line), fp);
+    }
+    while (fgets(line, sizeof(line), fp) && used + 1 < report_size) {
+        if (contains_support_marker(line, "password") ||
+            contains_support_marker(line, "secret") ||
+            contains_support_marker(line, "token") ||
+            contains_support_marker(line, "mqtt_pass")) {
+            snprintf(line, sizeof(line), "[redacted sensitive log line]\n");
+        }
+        used += (size_t)snprintf(report + used, report_size - used, "%s", line);
+    }
+    fclose(fp);
+}
+
+static void mqtt_create_support_report_callback(void* user_data) {
+    char report[SUPPORT_REPORT_MAX];
+    int rc;
+    (void)user_data;
+
+    snprintf(report, sizeof(report),
+             "WiBox support report\nfirmware=%s\ncommit=%s\nlocal_ip=%s\n",
+             WIBOX_VERSION, WIBOX_COMMIT, local_ip_addr);
+    append_support_log(report, sizeof(report), "daemon log", "/var/log/wibox-media-daemon.log", 1800);
+    append_support_log(report, sizeof(report), "previous daemon log", "/var/log/wibox-media-daemon.log.old", 1200);
+    append_support_log(report, sizeof(report), "firmware updater log", "/tmp/firmware_update.log", 1200);
+    rc = mqtt_publish_support_report(report);
+    if (rc == 0) {
+        PJ_LOG(3, (THIS_FILE, "Support report published (%zu bytes)", strlen(report)));
+    } else {
+        PJ_LOG(2, (THIS_FILE, "Support report publish failed (%zu bytes)", strlen(report)));
     }
 }
 
@@ -3042,6 +3123,7 @@ int main(int argc, char *argv[]) {
     mqtt_callbacks.take_snapshot = mqtt_take_snapshot_callback;
     mqtt_callbacks.simulate_ding = mqtt_simulate_ding_callback;
     mqtt_callbacks.simulate_handset_answered = mqtt_simulate_handset_answered_callback;
+    mqtt_callbacks.create_support_report = mqtt_create_support_report_callback;
     mqtt_callbacks.set_video_enabled = mqtt_set_video_enabled_callback;
     mqtt_callbacks.set_video_bitrate = mqtt_set_video_bitrate_callback;
     mqtt_callbacks.set_sip_outgoing_call_enabled = mqtt_set_sip_outgoing_call_enabled_callback;

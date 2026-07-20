@@ -423,13 +423,13 @@ static void topic_path(char* out, size_t out_size, const char* suffix) {
     snprintf(out, out_size, "%s/%s", mqtt_state.base_topic, suffix);
 }
 
-static void publish_suffix(const char* suffix, const char* payload, int retain) {
+static int publish_suffix(const char* suffix, const char* payload, int retain) {
     char topic[256];
     if (!mqtt_state.connected) {
-        return;
+        return -1;
     }
     topic_path(topic, sizeof(topic), suffix);
-    mqtt_publish_raw(topic, payload, retain);
+    return mqtt_publish_raw(topic, payload, retain);
 }
 
 static char base64_char(unsigned int v) {
@@ -883,6 +883,27 @@ static void publish_snapshot_button_config(void) {
     mqtt_publish_raw(topic, payload, 1);
 }
 
+static void publish_support_report_button_config(void) {
+    char topic[256];
+    char command_topic[256];
+    char uid[192];
+    char dev[512];
+    char payload[1536];
+
+    discovery_topic(topic, sizeof(topic), "button", "support_report");
+    topic_path(command_topic, sizeof(command_topic), "support/report/set");
+    unique_id(uid, sizeof(uid), "support_report");
+    device_json(dev, sizeof(dev));
+
+    snprintf(payload, sizeof(payload),
+             "{\"name\":\"Create Support Report\",\"unique_id\":\"%s\","
+             "\"command_topic\":\"%s\",\"payload_press\":\"PRESS\","
+             "\"availability_topic\":\"%s\",\"entity_category\":\"diagnostic\","
+             "\"icon\":\"mdi:github\",%s}",
+             uid, command_topic, mqtt_state.base_topic, dev);
+    mqtt_publish_raw(topic, payload, 1);
+}
+
 static void publish_snapshot_image_config(void) {
     char topic[256];
     char image_topic[256];
@@ -1325,6 +1346,7 @@ void mqtt_publish_discovery(void) {
     publish_developer_simulate_ding_button_config();
     publish_developer_simulate_handset_answered_button_config();
     publish_snapshot_button_config();
+    publish_support_report_button_config();
     publish_snapshot_image_config();
     publish_uart_event_config();
     publish_call_event_config();
@@ -1496,6 +1518,70 @@ void mqtt_publish_wifi_stats(void) {
 
 void mqtt_publish_snapshot_available(int available) {
     publish_suffix("snapshot/take/availability", available ? "online" : "offline", 1);
+}
+
+static size_t json_escape(char* out, size_t out_size, const char* input) {
+    size_t i;
+    size_t pos = 0;
+
+    if (!out || out_size == 0) return 0;
+    for (i = 0; input && input[i] && pos + 1 < out_size; i++) {
+        unsigned char c = (unsigned char)input[i];
+        const char* escape = NULL;
+        char hex[7];
+
+        switch (c) {
+        case '\\': escape = "\\\\"; break;
+        case '"': escape = "\\\""; break;
+        case '\n': escape = "\\n"; break;
+        case '\r': escape = "\\r"; break;
+        case '\t': escape = "\\t"; break;
+        default:
+            if (c < 0x20) {
+                snprintf(hex, sizeof(hex), "\\u%04x", c);
+                escape = hex;
+            }
+            break;
+        }
+        if (escape) {
+            size_t len = strlen(escape);
+            if (pos + len >= out_size) break;
+            memcpy(out + pos, escape, len);
+            pos += len;
+        } else {
+            out[pos++] = (char)c;
+        }
+    }
+    out[pos] = '\0';
+    return pos;
+}
+
+int mqtt_publish_support_report(const char* body) {
+    char* escaped_body;
+    char* payload;
+    size_t body_len = body ? strlen(body) : 0;
+    size_t escaped_size = body_len * 6 + 1;
+    size_t payload_size = escaped_size + 768;
+    int rc;
+
+    if (!mqtt_state.connected || !body) return -1;
+    escaped_body = malloc(escaped_size);
+    payload = malloc(payload_size);
+    if (!escaped_body || !payload) {
+        free(escaped_body);
+        free(payload);
+        return -1;
+    }
+    json_escape(escaped_body, escaped_size, body);
+    snprintf(payload, payload_size,
+             "{\"event_type\":\"support_report\",\"device_id\":\"%s\","
+             "\"firmware_version\":\"%s\",\"title\":\"WiBox support report %s\","
+             "\"body\":\"%s\"}",
+             mqtt_state.device_id, WIBOX_VERSION, mqtt_state.device_id, escaped_body);
+    rc = publish_suffix("support/report", payload, 0);
+    free(escaped_body);
+    free(payload);
+    return rc;
 }
 
 static void bytes_to_hex(const unsigned char* data, size_t len, char* out, size_t out_size) {
@@ -1717,6 +1803,19 @@ static void handle_mqtt_message(const char* topic, const char* payload, int reta
         return;
     }
 
+    topic_path(expected, sizeof(expected), "support/report/set");
+    if (strcmp(topic, expected) == 0) {
+        if (retain) {
+            log_ignored_retained_command(topic);
+            return;
+        }
+        if (payload_is_on(payload) && mqtt_state.callbacks.create_support_report) {
+            printf("%s: support report requested\n", MQTT_FILE);
+            mqtt_state.callbacks.create_support_report(mqtt_state.user_data);
+        }
+        return;
+    }
+
     topic_path(expected, sizeof(expected), "system/reboot/set");
     if (strcmp(topic, expected) == 0) {
         if (retain) {
@@ -1868,6 +1967,7 @@ static int mqtt_subscribe_topics(void) {
         "developer/simulate_ding/set",
         "developer/simulate_handset_answered/set",
         "snapshot/take/set",
+        "support/report/set",
         "snapshot/ring_delay_ms/set",
         "video/enabled/set",
         "rtsp/enabled/set",
