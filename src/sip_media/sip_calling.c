@@ -94,6 +94,19 @@ void sip_calling_set_video_config(int local_video_rtp_port, int video_payload_ty
            config.local_video_rtp_port, config.video_payload_type);
 }
 
+void sip_calling_set_local_ip(const char* local_ip) {
+    if (!local_ip || !local_ip[0]) {
+        return;
+    }
+    if (strcmp(config.local_ip, local_ip) == 0) {
+        return;  // unchanged
+    }
+    PJ_LOG(3,(THIS_FILE, "sip_calling: local IP updated %s -> %s",
+              config.local_ip[0] ? config.local_ip : "(unset)", local_ip));
+    strncpy(config.local_ip, local_ip, sizeof(config.local_ip) - 1);
+    config.local_ip[sizeof(config.local_ip) - 1] = '\0';
+}
+
 static void set_call_state(sip_call_state_t new_state) {
     sip_call_state_t old_state = current_session.state;
 

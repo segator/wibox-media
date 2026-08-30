@@ -505,6 +505,7 @@ pj_status_t sip_calling_set_target_uri(const char *target_uri) {
     (void)target_uri; return fake_set_target_status;
 }
 void sip_calling_set_video_config(int port, int payload) { (void)port; (void)payload; }
+void sip_calling_set_local_ip(const char *local_ip) { (void)local_ip; }
 pj_status_t sip_calling_make_call(void) {
     fake_make_call_count++;
     if (fake_make_call_status == PJ_SUCCESS) fake_sip_state = SIP_CALL_STATE_CALLING;

@@ -533,12 +533,11 @@ static void refresh_local_ip(void) {
     char new_local_ip[16];
     get_local_ip(new_local_ip, sizeof(new_local_ip));
 
-    // Check if IP changed (simple string comparison)
-    const sip_call_session_t* session = sip_calling_get_session();
-    if (session) {
-        // We don't have direct access to the stored local_ip in sip_calling module
-        // So we'll just log the refresh for now
-        PJ_LOG(3,(THIS_FILE, "Refreshed local IP: %s", new_local_ip));
+    // Skip invalid results so a transient network-down state does not overwrite a
+    // good address with 0.0.0.0. sip_calling_set_local_ip is a no-op if unchanged
+    // and logs when the advertised SIP/SDP address actually moves (e.g. DHCP).
+    if (new_local_ip[0] && strcmp(new_local_ip, "0.0.0.0") != 0) {
+        sip_calling_set_local_ip(new_local_ip);
     }
 }
 
@@ -2066,6 +2065,11 @@ static void handle_ding_trigger(const char* source) {
         call_trace_record("sip_disabled", "ringing", "none", "outgoing-disabled", 0);
         return;
     }
+
+    // Refresh the advertised local IP right before offering, so a DHCP change
+    // since init/last call is reflected in the SDP/Contact rather than sending a
+    // stale address that would break media.
+    refresh_local_ip();
 
     PJ_LOG(3,(THIS_FILE, "Making outgoing call due to %s", source ? source : "DING"));
     call_trace_record("sip_calling", "ringing", "sip", "outgoing-call", 0);

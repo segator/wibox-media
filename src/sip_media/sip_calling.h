@@ -97,6 +97,13 @@ void sip_calling_set_call_timeout(int timeout_seconds);
 pj_status_t sip_calling_set_target_uri(const char* target_uri);
 
 /**
+ * Update the local IP advertised in SIP/SDP (Contact, Via, SDP c=/o=) for future
+ * offers. The UDP transport binds to 0.0.0.0, so only the advertised address must
+ * be refreshed when the device IP changes (e.g. DHCP). No-op if unchanged.
+ */
+void sip_calling_set_local_ip(const char* local_ip);
+
+/**
  * Update local video SDP settings for future SIP offers/answers.
  */
 void sip_calling_set_video_config(int local_video_rtp_port, int video_payload_type);
