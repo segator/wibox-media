@@ -1505,6 +1505,13 @@ static void mqtt_simulate_ding_callback(void* user_data) {
     size_t len;
     (void)user_data;
 
+    // Runs on the external MQTT thread and uses PJ_LOG below (pj_thread_this),
+    // which aborts on an unregistered thread. Register first, like the other
+    // MQTT callbacks (same crash class as issue #44).
+    if (!ensure_pj_thread_registered("mqtt_simulate_ding")) {
+        return;
+    }
+
     snprintf(message, sizeof(message), "%s\n",
              app_config.ding_message[0] ? app_config.ding_message : "DING");
     len = strlen(message);

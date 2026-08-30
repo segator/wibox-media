@@ -57,9 +57,13 @@ int uart_protocol_parse_control_frame(const char *input, unsigned char frame[4])
         while (*p && (isspace((unsigned char)*p) || *p == ':' || *p == '-')) p++;
         if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) p += 2;
         if (p[0] == '\\' && (p[1] == 'x' || p[1] == 'X')) p += 2;
+        // Check p[0] before reading p[1]: after the separator/prefix skips above
+        // p may sit on the NUL terminator, and reading p[1] would be one byte
+        // out of bounds. hex_nibble('\0') < 0, so this bails before touching p[1].
         hi = hex_nibble(p[0]);
+        if (hi < 0) return -1;
         lo = hex_nibble(p[1]);
-        if (hi < 0 || lo < 0) return -1;
+        if (lo < 0) return -1;
         frame[count++] = (unsigned char)((hi << 4) | lo);
         p += 2;
     }

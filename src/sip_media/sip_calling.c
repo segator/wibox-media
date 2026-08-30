@@ -661,6 +661,7 @@ static pj_status_t send_bye_request(void) {
     pj_str_t from_uri_str;
     pj_str_t to_uri_str;
     char from_uri_buf[128];
+    pj_str_t target_uri_str;
     pj_str_t *bye_target;
     int retry_count;
 
@@ -675,7 +676,12 @@ static pj_status_t send_bye_request(void) {
     if (current_session.remote_contact.slen > 0) {
         bye_target = &current_session.remote_contact;
     } else if (current_session.direction == SIP_CALL_DIRECTION_OUTGOING) {
-        bye_target = &(pj_str_t){config.target_uri, strlen(config.target_uri)};
+        // Must not point bye_target at a block-scoped compound literal: its
+        // lifetime ends with this else-if block, leaving a dangling pointer that
+        // is dereferenced later in pjsip_endpt_create_request. Use a function-
+        // scope pj_str_t instead.
+        target_uri_str = pj_str(config.target_uri);
+        bye_target = &target_uri_str;
     } else {
         bye_target = &current_session.remote_uri;
     }

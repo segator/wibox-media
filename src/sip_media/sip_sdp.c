@@ -90,7 +90,7 @@ int sip_sdp_parse(const char *sdp_content, int *remote_rtp_port,
         int port;
         char protocol[32] = "";
         if (sscanf(media_line, "m=audio %d %31s", &port, protocol) == 2 &&
-            strstr(protocol, "RTP") != NULL) {
+            strstr(protocol, "RTP") != NULL && port > 0 && port <= 65535) {
             *remote_rtp_port = port;
         }
     }
@@ -100,7 +100,7 @@ int sip_sdp_parse(const char *sdp_content, int *remote_rtp_port,
         int port;
         char protocol[32] = "";
         if (sscanf(media_line, "m=video %d %31s", &port, protocol) == 2 &&
-            strstr(protocol, "RTP") != NULL && port > 0) {
+            strstr(protocol, "RTP") != NULL && port > 0 && port <= 65535) {
             *remote_video_rtp_port = port;
         }
     }

@@ -115,10 +115,13 @@ static int parse_config_line(const char* line, wibox_config_t* config) {
         return -1;
     }
 
-    // Split key and value
+    // Split key and value. Bounded copies: a long line (line_copy is 512) could
+    // otherwise strcpy more than key/value hold (256 each) and smash the stack.
     *equals_pos = '\0';
-    strcpy(key, trim_whitespace(trimmed));
-    strcpy(value, trim_whitespace(equals_pos + 1));
+    strncpy(key, trim_whitespace(trimmed), sizeof(key) - 1);
+    key[sizeof(key) - 1] = '\0';
+    strncpy(value, trim_whitespace(equals_pos + 1), sizeof(value) - 1);
+    value[sizeof(value) - 1] = '\0';
 
     // Remove quotes from value if present
     if ((value[0] == '"' && value[strlen(value)-1] == '"') ||

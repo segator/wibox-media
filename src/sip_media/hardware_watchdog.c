@@ -162,8 +162,11 @@ int hardware_watchdog_start(int enabled,
         return 0;
     }
 
-    if (!device || !device[0] || timeout_seconds < 5 ||
-        feed_interval_seconds < 1 ||
+    // Upper bounds guard the feed_interval_seconds * 2 comparison against signed
+    // integer overflow (a huge configured value would otherwise wrap negative and
+    // slip past the sanity check, leaving the watchdog effectively unfed).
+    if (!device || !device[0] || timeout_seconds < 5 || timeout_seconds > 3600 ||
+        feed_interval_seconds < 1 || feed_interval_seconds > 3600 ||
         feed_interval_seconds * 2 >= timeout_seconds) {
         printf("ERROR: invalid hardware watchdog configuration\n");
         return -1;
