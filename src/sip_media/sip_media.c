@@ -1442,6 +1442,19 @@ static void mqtt_open_door_callback(void* user_data) {
     int started_panel_context;
     (void)user_data;
 
+    /*
+     * This callback runs on the MQTT client thread, which is external to PJLIB.
+     * Both the active-call path (unlock_door) and the panel-context path
+     * (ensure_intercom_call_open / close_intercom_call) reach PJ_LOG, which
+     * calls pj_thread_this() and aborts on an unregistered thread. Register the
+     * thread first, matching mqtt_simulate_handset_answered_callback and the
+     * other MQTT callbacks. Fixes the crash on ring/door-open when no SIP call
+     * is active (GitHub issue #44).
+     */
+    if (!ensure_pj_thread_registered("mqtt_open_door")) {
+        return;
+    }
+
     if (sip_calling_is_call_active()) {
         unlock_door("mqtt");
         return;
