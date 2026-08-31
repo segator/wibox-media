@@ -26,6 +26,13 @@
 #define RTSP_RX_BUFFER_MAX 4096
 #define RTP_PACKET_MAX 2048
 #define DEFAULT_RTSP_PORT 8554
+/* Accepted-socket timeouts so a stuck/idle peer cannot block the server: recv
+ * wakes the worker periodically, send bounds how long a broadcast can stall. */
+#define RTSP_CLIENT_RCVTIMEO_SEC 5
+#define RTSP_CLIENT_SNDTIMEO_SEC 2
+/* A client that never reaches PLAY is dropped after this many recv timeouts so
+ * two silent connections cannot permanently hold both slots. */
+#define RTSP_HANDSHAKE_MAX_TIMEOUTS 3
 
 typedef struct {
     int fd;
@@ -35,6 +42,7 @@ typedef struct {
     int has_audio;
     int video_channel;
     int audio_channel;
+    int thread_running;   /* slot owned by a live worker; block reuse until it exits */
     unsigned int session_id;
     pthread_t thread;
     pthread_mutex_t send_mutex;
@@ -112,6 +120,10 @@ static void notify_client_count(void)
     }
 }
 
+/* Mark a client inactive and wake its worker via shutdown(), but do NOT close()
+ * the fd here. The owning worker thread closes its own fd on exit (see
+ * client_thread_func), so the fd number cannot be recycled by accept() while
+ * that thread might still recv()/send() on it. Idempotent. */
 static void close_client_locked(int idx)
 {
     if (idx < 0 || idx >= MAX_RTSP_CLIENTS) {
@@ -119,8 +131,6 @@ static void close_client_locked(int idx)
     }
     if (clients[idx].fd >= 0) {
         shutdown(clients[idx].fd, SHUT_RDWR);
-        close(clients[idx].fd);
-        clients[idx].fd = -1;
     }
     clients[idx].active = 0;
     clients[idx].playing = 0;
@@ -522,9 +532,11 @@ static void consume_rx_bytes(char *rxbuf, size_t *rxlen, size_t consumed)
     *rxlen -= consumed;
 }
 
-static int read_rtsp_request(int fd, char *buf, size_t size,
+static int read_rtsp_request(rtsp_client_t *client, int fd, char *buf, size_t size,
                              char *rxbuf, size_t *rxlen)
 {
+    int idle_timeouts = 0;
+
     if (!buf || size == 0 || !rxbuf || !rxlen) {
         return -1;
     }
@@ -567,9 +579,23 @@ static int read_rtsp_request(int fd, char *buf, size_t size,
                               RTSP_RX_BUFFER_MAX - *rxlen, 0);
             if (rd > 0) {
                 *rxlen += (size_t)rd;
+                idle_timeouts = 0;
                 continue;
             }
             if (rd < 0 && errno == EINTR) {
+                continue;
+            }
+            if (rd < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                /* SO_RCVTIMEO fired. A client that reached PLAY only receives
+                 * interleaved RTP and legitimately sends nothing, so keep it.
+                 * A pre-PLAY client that stays silent is dropped after a bounded
+                 * number of timeouts so it cannot hold a slot indefinitely. */
+                if (client && client->playing) {
+                    continue;
+                }
+                if (++idle_timeouts >= RTSP_HANDSHAKE_MAX_TIMEOUTS) {
+                    return -1;
+                }
                 continue;
             }
             return -1;
@@ -593,7 +619,7 @@ static void *client_thread_func(void *arg)
         char uri[512] = {0};
         int cseq;
 
-        if (read_rtsp_request(client->fd, req, sizeof(req), rxbuf, &rxlen) <= 0) {
+        if (read_rtsp_request(client, client->fd, req, sizeof(req), rxbuf, &rxlen) <= 0) {
             break;
         }
 
@@ -635,6 +661,15 @@ static void *client_thread_func(void *arg)
 
     pthread_mutex_lock(&clients_mutex);
     close_client_locked(idx);
+    /* This worker is the sole closer of its fd. send_mutex guards against any
+     * in-flight send() on the same fd before it is closed. */
+    if (clients[idx].fd >= 0) {
+        pthread_mutex_lock(&clients[idx].send_mutex);
+        close(clients[idx].fd);
+        clients[idx].fd = -1;
+        pthread_mutex_unlock(&clients[idx].send_mutex);
+    }
+    clients[idx].thread_running = 0;
     pthread_mutex_unlock(&clients_mutex);
     notify_client_count();
     printf("rtsp: client disconnected slot=%d\n", idx);
@@ -647,7 +682,9 @@ static int allocate_client(int fd)
 
     pthread_mutex_lock(&clients_mutex);
     for (i = 0; i < MAX_RTSP_CLIENTS; i++) {
-        if (!clients[i].active) {
+        /* thread_running guards against reusing a slot whose previous worker has
+         * been marked inactive but has not exited yet (and may still touch fd). */
+        if (!clients[i].active && !clients[i].thread_running) {
             clients[i].fd = fd;
             clients[i].active = 1;
             clients[i].playing = 0;
@@ -655,6 +692,7 @@ static int allocate_client(int fd)
             clients[i].has_audio = 0;
             clients[i].video_channel = 0;
             clients[i].audio_channel = 2;
+            clients[i].thread_running = 1;
             clients[i].session_id = (unsigned int)time(NULL) ^ (unsigned int)getpid() ^ (unsigned int)i;
             pthread_mutex_unlock(&clients_mutex);
             return i;
@@ -717,6 +755,13 @@ static void *listener_thread_func(void *arg)
             continue;
         }
 
+        {
+            struct timeval rcv = { RTSP_CLIENT_RCVTIMEO_SEC, 0 };
+            struct timeval snd = { RTSP_CLIENT_SNDTIMEO_SEC, 0 };
+            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &rcv, sizeof(rcv));
+            setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &snd, sizeof(snd));
+        }
+
         idx = allocate_client(fd);
         if (idx < 0) {
             close(fd);
@@ -724,8 +769,15 @@ static void *listener_thread_func(void *arg)
         }
         if (pthread_create(&clients[idx].thread, NULL, client_thread_func,
                            (void *)(intptr_t)idx) != 0) {
+            /* No worker will run for this slot, so close the fd here and release
+             * the slot (thread_running was set optimistically by allocate_client). */
             pthread_mutex_lock(&clients_mutex);
             close_client_locked(idx);
+            if (clients[idx].fd >= 0) {
+                close(clients[idx].fd);
+                clients[idx].fd = -1;
+            }
+            clients[idx].thread_running = 0;
             pthread_mutex_unlock(&clients_mutex);
             continue;
         }
@@ -929,6 +981,22 @@ void rtsp_stream_stop(void)
     last_video_client_count = -1;
     last_audio_client_count = -1;
     pthread_mutex_unlock(&clients_mutex);
+
+    /* Detached worker threads close their own fds on exit; give them a bounded
+     * window to observe the shutdown so sockets are not leaked past stop. */
+    {
+        int w;
+        for (w = 0; w < 200; w++) {
+            int busy = 0;
+            pthread_mutex_lock(&clients_mutex);
+            for (i = 0; i < MAX_RTSP_CLIENTS; i++) {
+                if (clients[i].thread_running) busy = 1;
+            }
+            pthread_mutex_unlock(&clients_mutex);
+            if (!busy) break;
+            usleep(10000);
+        }
+    }
 
     pthread_join(listener_thread, NULL);
     pthread_join(video_reader_thread, NULL);
