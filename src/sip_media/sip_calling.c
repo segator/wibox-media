@@ -6,6 +6,7 @@
 #include <strings.h>
 #include <time.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #define THIS_FILE "sip_calling"
 
@@ -26,6 +27,46 @@ static pj_status_t send_bye_request(void);
 static void clear_session_data(void);
 static void store_dialog_info_from_invite(pjsip_rx_data *rdata);
 static void store_dialog_info_from_response(pjsip_rx_data *rdata);
+
+/*
+ * current_session (and outgoing_invite_tdata) are touched by several threads:
+ * the pjsip thread (incoming INVITE/ACK/BYE/CANCEL, responses), the serial
+ * monitor thread and MQTT/DING threads (make_call, terminate_call, timeout).
+ * A single recursive mutex, taken at every public entry point that reads or
+ * mutates the session, serializes those operations so e.g. a terminate racing
+ * an incoming 200 OK can no longer read a half-written / memset() buffer.
+ * Recursive so the state-change callbacks (which re-enter sip_calling_get_*)
+ * on the same thread do not self-deadlock.
+ */
+static pthread_mutex_t session_mutex;
+static pthread_once_t session_mutex_once = PTHREAD_ONCE_INIT;
+static void session_mutex_init(void) {
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&session_mutex, &attr);
+    pthread_mutexattr_destroy(&attr);
+}
+static void session_lock(void) {
+    pthread_once(&session_mutex_once, session_mutex_init);
+    pthread_mutex_lock(&session_mutex);
+}
+static void session_unlock(void) {
+    pthread_mutex_unlock(&session_mutex);
+}
+
+/* Locked internals (called with session_mutex held via the public wrappers). */
+static pj_status_t sip_calling_make_call_locked(void);
+static pj_status_t sip_calling_handle_incoming_invite_locked(pjsip_rx_data *rdata);
+static pj_status_t sip_calling_handle_incoming_ack_locked(pjsip_rx_data *rdata);
+static pj_status_t sip_calling_handle_incoming_bye_locked(pjsip_rx_data *rdata);
+static pj_status_t sip_calling_handle_incoming_cancel_locked(pjsip_rx_data *rdata);
+static pj_status_t sip_calling_terminate_call_locked(void);
+static sip_call_state_t sip_calling_get_state_locked(void);
+static pj_bool_t sip_calling_is_call_active_locked(void);
+static const sip_call_session_t* sip_calling_get_session_locked(void);
+static pj_bool_t sip_calling_check_timeout_locked(void);
+static pj_bool_t sip_calling_handle_response_locked(pjsip_rx_data *rdata);
 
 pj_status_t sip_calling_init(const sip_call_config_t* call_config,
                             pjsip_endpoint* endpt,
@@ -167,7 +208,7 @@ static void clear_session_data(void) {
     current_session.remote_uri.slen = 0;
 }
 
-pj_status_t sip_calling_make_call(void) {
+static pj_status_t sip_calling_make_call_locked(void) {
     if (current_session.state != SIP_CALL_STATE_IDLE) {
         PJ_LOG(2,(THIS_FILE, "Cannot make call - already in state %d", current_session.state));
         return PJ_EBUSY;
@@ -313,7 +354,7 @@ static pj_status_t send_cancel_request(void) {
     return status;
 }
 
-pj_status_t sip_calling_handle_incoming_invite(pjsip_rx_data *rdata) {
+static pj_status_t sip_calling_handle_incoming_invite_locked(pjsip_rx_data *rdata) {
     pjsip_tx_data *tdata;
     pj_status_t status;
     pj_str_t sdp_str;
@@ -484,7 +525,7 @@ pj_status_t sip_calling_handle_incoming_invite(pjsip_rx_data *rdata) {
     return PJ_SUCCESS;
 }
 
-pj_status_t sip_calling_handle_incoming_ack(pjsip_rx_data *rdata) {
+static pj_status_t sip_calling_handle_incoming_ack_locked(pjsip_rx_data *rdata) {
     PJ_LOG(3,(THIS_FILE, "Received ACK for incoming call"));
 
     // Verify this ACK is for our current call
@@ -506,7 +547,7 @@ pj_status_t sip_calling_handle_incoming_ack(pjsip_rx_data *rdata) {
     return PJ_SUCCESS;
 }
 
-pj_status_t sip_calling_handle_incoming_bye(pjsip_rx_data *rdata) {
+static pj_status_t sip_calling_handle_incoming_bye_locked(pjsip_rx_data *rdata) {
     PJ_LOG(3,(THIS_FILE, "Received BYE request"));
 
     // Verify this BYE is for our current call
@@ -528,7 +569,7 @@ pj_status_t sip_calling_handle_incoming_bye(pjsip_rx_data *rdata) {
     return PJ_SUCCESS;
 }
 
-pj_status_t sip_calling_handle_incoming_cancel(pjsip_rx_data *rdata) {
+static pj_status_t sip_calling_handle_incoming_cancel_locked(pjsip_rx_data *rdata) {
     PJ_LOG(3,(THIS_FILE, "Received CANCEL request"));
 
     // Send 200 OK response to CANCEL
@@ -748,7 +789,7 @@ static pj_status_t send_bye_request(void) {
     return PJ_SUCCESS;
 }
 
-pj_status_t sip_calling_terminate_call(void) {
+static pj_status_t sip_calling_terminate_call_locked(void) {
     if (current_session.state == SIP_CALL_STATE_IDLE) {
         return PJ_SUCCESS;  // Already idle
     }
@@ -833,22 +874,22 @@ static pj_status_t send_ack_request(pjsip_rx_data* rdata) {
     return status;
 }
 
-sip_call_state_t sip_calling_get_state(void) {
+static sip_call_state_t sip_calling_get_state_locked(void) {
     return current_session.state;
 }
 
-pj_bool_t sip_calling_is_call_active(void) {
+static pj_bool_t sip_calling_is_call_active_locked(void) {
     return (current_session.state != SIP_CALL_STATE_IDLE);
 }
 
-const sip_call_session_t* sip_calling_get_session(void) {
+static const sip_call_session_t* sip_calling_get_session_locked(void) {
     if (current_session.state == SIP_CALL_STATE_IDLE) {
         return NULL;
     }
     return &current_session;
 }
 
-pj_bool_t sip_calling_check_timeout(void) {
+static pj_bool_t sip_calling_check_timeout_locked(void) {
     if (current_session.state == SIP_CALL_STATE_CALLING ||
         current_session.state == SIP_CALL_STATE_RINGING) {
 
@@ -865,7 +906,7 @@ pj_bool_t sip_calling_check_timeout(void) {
     return PJ_FALSE;
 }
 
-pj_bool_t sip_calling_handle_response(pjsip_rx_data *rdata) {
+static pj_bool_t sip_calling_handle_response_locked(pjsip_rx_data *rdata) {
     pjsip_cid_hdr *cid_hdr;
 
     // Check if this response is for our outgoing call
@@ -976,4 +1017,42 @@ void sip_calling_cleanup(void) {
     callback_user_data = NULL;
 
     PJ_LOG(3,(THIS_FILE, "Unified SIP calling module cleaned up"));
+}
+
+/* ---- Public entry points: serialize session access under session_mutex ----
+ * The real logic lives in the *_locked variants above; these thin wrappers hold
+ * the recursive session_mutex so concurrent callers (pjsip / serial / MQTT-DING
+ * threads) cannot observe or produce a half-updated current_session. */
+pj_status_t sip_calling_make_call(void) {
+    pj_status_t r; session_lock(); r = sip_calling_make_call_locked(); session_unlock(); return r;
+}
+pj_status_t sip_calling_handle_incoming_invite(pjsip_rx_data *rdata) {
+    pj_status_t r; session_lock(); r = sip_calling_handle_incoming_invite_locked(rdata); session_unlock(); return r;
+}
+pj_status_t sip_calling_handle_incoming_ack(pjsip_rx_data *rdata) {
+    pj_status_t r; session_lock(); r = sip_calling_handle_incoming_ack_locked(rdata); session_unlock(); return r;
+}
+pj_status_t sip_calling_handle_incoming_bye(pjsip_rx_data *rdata) {
+    pj_status_t r; session_lock(); r = sip_calling_handle_incoming_bye_locked(rdata); session_unlock(); return r;
+}
+pj_status_t sip_calling_handle_incoming_cancel(pjsip_rx_data *rdata) {
+    pj_status_t r; session_lock(); r = sip_calling_handle_incoming_cancel_locked(rdata); session_unlock(); return r;
+}
+pj_status_t sip_calling_terminate_call(void) {
+    pj_status_t r; session_lock(); r = sip_calling_terminate_call_locked(); session_unlock(); return r;
+}
+sip_call_state_t sip_calling_get_state(void) {
+    sip_call_state_t r; session_lock(); r = sip_calling_get_state_locked(); session_unlock(); return r;
+}
+pj_bool_t sip_calling_is_call_active(void) {
+    pj_bool_t r; session_lock(); r = sip_calling_is_call_active_locked(); session_unlock(); return r;
+}
+const sip_call_session_t* sip_calling_get_session(void) {
+    const sip_call_session_t* r; session_lock(); r = sip_calling_get_session_locked(); session_unlock(); return r;
+}
+pj_bool_t sip_calling_check_timeout(void) {
+    pj_bool_t r; session_lock(); r = sip_calling_check_timeout_locked(); session_unlock(); return r;
+}
+pj_bool_t sip_calling_handle_response(pjsip_rx_data *rdata) {
+    pj_bool_t r; session_lock(); r = sip_calling_handle_response_locked(rdata); session_unlock(); return r;
 }
