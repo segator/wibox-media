@@ -1020,8 +1020,14 @@ static int start_video_worker(const char* remote_ip, int remote_video_port,
         PJ_LOG(3,(THIS_FILE, "Video worker not started: video disabled"));
         return 0;
     }
+    /* Hold the lifecycle lock across the check-and-fork so two concurrent
+     * starters (SIP audio-ready, RTSP client-count, snapshot) cannot both
+     * observe pid<=0 and fork two workers - the extra worker would be orphaned
+     * (never SIGTERMed) while still holding the single hardware H.264 encoder. */
+    pthread_mutex_lock(&video_lifecycle_mutex);
     if (video_bridge_pid > 0) {
         PJ_LOG(3,(THIS_FILE, "Video worker already running pid=%d", video_bridge_pid));
+        pthread_mutex_unlock(&video_lifecycle_mutex);
         return 1;
     }
     if (payload_type <= 0 || payload_type > 127) {
@@ -1042,11 +1048,13 @@ static int start_video_worker(const char* remote_ip, int remote_video_port,
     rtsp_video_fd = rtsp_stream_get_video_pipe_fd();
     if (!has_sip_rtp && rtsp_video_fd < 0) {
         PJ_LOG(2,(THIS_FILE, "Video worker not started: no SIP target and RTSP pipe unavailable"));
+        pthread_mutex_unlock(&video_lifecycle_mutex);
         return 0;
     }
     if (pipe(control_pipe) < 0) {
         PJ_LOG(1,(THIS_FILE, "Video worker not started: control pipe failed: %s",
                   strerror(errno)));
+        pthread_mutex_unlock(&video_lifecycle_mutex);
         return 0;
     }
     close_video_control_fd();
@@ -1057,6 +1065,7 @@ static int start_video_worker(const char* remote_ip, int remote_video_port,
         close(control_pipe[0]);
         close(control_pipe[1]);
         video_bridge_pid = -1;
+        pthread_mutex_unlock(&video_lifecycle_mutex);
         return 0;
     }
     if (video_bridge_pid == 0) {
@@ -1093,6 +1102,7 @@ static int start_video_worker(const char* remote_ip, int remote_video_port,
     close(control_pipe[0]);
     video_bridge_control_fd = control_pipe[1];
     video_bridge_has_sip_rtp = has_sip_rtp ? 1 : 0;
+    pthread_mutex_unlock(&video_lifecycle_mutex);
     PJ_LOG(3,(THIS_FILE, "Started video worker pid=%d reason=%s sip_rtp=%d target=%s:%d payload=%d bitrate=%dkbps gop_n=%d idr_interval=%d brc_mode=%d rtsp_periodic_idr_ms=%d rtsp_fd=%d",
               video_bridge_pid, reason ? reason : "unknown", video_bridge_has_sip_rtp,
               has_sip_rtp ? remote_ip : "-", has_sip_rtp ? remote_video_port : 0,

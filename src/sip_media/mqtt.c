@@ -1980,11 +1980,16 @@ static void* mqtt_thread_func(void* arg) {
         time_t last_ping;
 
         if (mqtt_connect_session() != 0 || mqtt_subscribe_topics() != 0) {
+            /* Serialize the socket teardown with senders (which hold io_mutex
+             * while writing to mqtt_state.sock) so we never close() the fd out
+             * from under an in-flight publish. */
+            pthread_mutex_lock(&mqtt_state.io_mutex);
             mqtt_state.connected = 0;
             if (mqtt_state.sock >= 0) {
                 close(mqtt_state.sock);
                 mqtt_state.sock = -1;
             }
+            pthread_mutex_unlock(&mqtt_state.io_mutex);
             printf("%s: broker unavailable or unauthorized, retrying later\n", MQTT_FILE);
             sleep(30);
             continue;
@@ -2035,11 +2040,15 @@ static void* mqtt_thread_func(void* arg) {
             }
         }
 
+        /* Same as above: close under io_mutex so a concurrent publish cannot be
+         * mid-write on this fd when it is closed and later reassigned. */
+        pthread_mutex_lock(&mqtt_state.io_mutex);
         mqtt_state.connected = 0;
         if (mqtt_state.sock >= 0) {
             close(mqtt_state.sock);
             mqtt_state.sock = -1;
         }
+        pthread_mutex_unlock(&mqtt_state.io_mutex);
         if (mqtt_state.running) {
             printf("%s: connection stopped, retrying\n", MQTT_FILE);
             sleep(5);
