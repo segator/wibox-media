@@ -271,6 +271,9 @@ int audio_hw_send_frame(const unsigned char* buffer, size_t len) {
         return -1;
     }
 
+    /* Zero the whole frame: it is an input to the (proprietary) AO driver, so any
+     * fields beyond virAddr/len must be defined rather than left as stack garbage. */
+    memset(&ao_frame, 0, sizeof(ao_frame));
     ao_frame.virAddr = (GADI_U8*)buffer;
     ao_frame.len = (GADI_U32)len;
 

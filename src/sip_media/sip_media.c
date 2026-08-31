@@ -854,8 +854,16 @@ static void close_video_control_fd(void) {
 
 static int write_video_control_command(const char* command, size_t len) {
     size_t off = 0;
+    int rc = 0;
 
+    /* Hold video_lifecycle_mutex across the fd check and the write so that
+     * close_video_control_fd() (called under the same lock from start/stop of the
+     * video worker) cannot close the control fd mid-write, which would otherwise
+     * write to a closed or recycled descriptor. The commands are a few bytes into
+     * a pipe with a 64K buffer, so the write never blocks under the lock. */
+    pthread_mutex_lock(&video_lifecycle_mutex);
     if (video_bridge_control_fd < 0 || !command || len == 0) {
+        pthread_mutex_unlock(&video_lifecycle_mutex);
         return -1;
     }
 
@@ -868,9 +876,11 @@ static int write_video_control_command(const char* command, size_t len) {
         if (wr < 0 && errno == EINTR) {
             continue;
         }
-        return -1;
+        rc = -1;
+        break;
     }
-    return 0;
+    pthread_mutex_unlock(&video_lifecycle_mutex);
+    return rc;
 }
 
 static int attach_video_worker_rtp(const char* remote_ip, int remote_video_port,
