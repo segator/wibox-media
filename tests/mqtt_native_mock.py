@@ -68,6 +68,7 @@ def send_initial_commands(conn):
     conn.sendall(publish("wibox/test/system/reboot/set", "PRESS", retain=True))
     conn.sendall(publish("wibox/test/developer/simulate_ding/set", "PRESS", retain=True))
     conn.sendall(publish("wibox/test/developer/simulate_handset_answered/set", "PRESS", retain=True))
+    conn.sendall(publish("wibox/test/support/report/set", "PRESS", retain=True))
     conn.sendall(publish("wibox/test/video/enabled/set", "OFF", retain=True))
     conn.sendall(publish("wibox/test/rtsp/enabled/set", "ON", retain=True))
     conn.sendall(publish("wibox/test/video/bitrate_kbps/set", "2048", retain=True))
@@ -81,6 +82,7 @@ def send_initial_commands(conn):
     conn.sendall(publish("wibox/test/developer/mode/set", "ON"))
     conn.sendall(publish("wibox/test/developer/simulate_ding/set", "PRESS"))
     conn.sendall(publish("wibox/test/developer/simulate_handset_answered/set", "PRESS"))
+    conn.sendall(publish("wibox/test/support/report/set", "PRESS"))
     conn.sendall(publish("wibox/test/developer/mode/set", "OFF"))
     conn.sendall(publish("wibox/test/developer/simulate_ding/set", "PRESS"))
     conn.sendall(publish("wibox/test/system/reboot/set", "PRESS"))
@@ -285,6 +287,15 @@ def main():
         return 1
     if not any(topic.endswith("_take_snapshot/config") for topic, _ in published):
         print("missing snapshot button Home Assistant discovery publish", file=sys.stderr)
+        return 1
+    if not any(topic.endswith("_support_report/config") and
+               'support/report/set' in payload for topic, payload in published):
+        print("missing support report Home Assistant discovery publish", file=sys.stderr)
+        return 1
+    support_reports = [json.loads(payload) for topic, payload in published
+                       if topic == "wibox/test/support/report"]
+    if len(support_reports) != 1 or support_reports[0].get("event_type") != "support_report":
+        print("missing support report publish or retained command was not ignored", file=sys.stderr)
         return 1
     if not any(topic.endswith("_take_snapshot/config") and
                'snapshot/take/availability' in payload

@@ -12,6 +12,7 @@ typedef struct {
     void (*take_snapshot)(void* user_data);
     void (*simulate_ding)(void* user_data);
     void (*simulate_handset_answered)(void* user_data);
+    void (*create_support_report)(void* user_data);
     void (*set_video_enabled)(int enabled, void* user_data);
     void (*set_video_bitrate)(int bitrate_kbps, void* user_data);
     void (*set_sip_outgoing_call_enabled)(int enabled, void* user_data);
@@ -52,6 +53,7 @@ void mqtt_publish_firmware_version(void);
 void mqtt_publish_door_unlocked_pulse(void);
 void mqtt_publish_wifi_stats(void);
 void mqtt_publish_snapshot_available(int available);
+int mqtt_publish_support_report(const char* body);
 int mqtt_publish_snapshot_file(const char* path);
 void mqtt_publish_uart_event(const char* event_type, const char* alias,
                              const unsigned char* raw, size_t raw_len,

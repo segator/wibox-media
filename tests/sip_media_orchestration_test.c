@@ -589,6 +589,7 @@ void mqtt_publish_door_unlocked_pulse(void) { mqtt_unlock_count++; }
 void mqtt_publish_wifi_stats(void) {}
 void mqtt_publish_snapshot_available(int available) { mqtt_snapshot_available = available; }
 int mqtt_publish_snapshot_file(const char *path) { (void)path; return 0; }
+int mqtt_publish_support_report(const char *body) { (void)body; return 0; }
 void mqtt_publish_uart_event(const char *event_type, const char *alias,
                              const unsigned char *raw, size_t raw_len,
                              int param, int known) {
