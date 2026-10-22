@@ -16,7 +16,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM ${BASE_IMAGE}
 COPY --from=builder /tmp/ct/mkcramfs /tmp/ct/cramfsck /usr/local/bin/
 ENV PATH="/opt/4.6.1/usr/bin:${PATH}"
-RUN chmod +x /usr/local/bin/mkcramfs /usr/local/bin/cramfsck \
-    && apt-get update && apt-get install -y --no-install-recommends rsync wget bzip2 sshpass \
+RUN sed -i \
+      -e 's|^# deb http://snapshot.debian.org/archive/debian/20260610T000000Z bullseye main|deb http://snapshot.debian.org/archive/debian/20260610T000000Z bullseye main|' \
+      -e 's|^deb http://deb.debian.org/debian bullseye main|# deb http://deb.debian.org/debian bullseye main|' \
+      -e 's|^# deb http://snapshot.debian.org/archive/debian-security/20260610T000000Z bullseye-security main|deb http://snapshot.debian.org/archive/debian-security/20260610T000000Z bullseye-security main|' \
+      -e 's|^deb http://deb.debian.org/debian-security bullseye-security main|# deb http://deb.debian.org/debian-security bullseye-security main|' \
+      -e 's|^# deb http://snapshot.debian.org/archive/debian/20260610T000000Z bullseye-updates main|deb http://snapshot.debian.org/archive/debian/20260610T000000Z bullseye-updates main|' \
+      -e 's|^deb http://deb.debian.org/debian bullseye-updates main|# deb http://deb.debian.org/debian bullseye-updates main|' \
+      /etc/apt/sources.list \
+    && chmod +x /usr/local/bin/mkcramfs /usr/local/bin/cramfsck \
+    && apt-get -o Acquire::Check-Valid-Until=false update \
+    && apt-get install -y --no-install-recommends rsync wget bzip2 sshpass \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
