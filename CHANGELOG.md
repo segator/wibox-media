@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/segator/wibox-media/compare/v0.18.0...v0.18.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* fail closed when TLS hostname verification setup fails ([#52](https://github.com/segator/wibox-media/issues/52)) ([eed32e1](https://github.com/segator/wibox-media/commit/eed32e1ca2201788bb3d13de424f06aedc079d34))
+
 ## [0.18.0](https://github.com/segator/wibox-media/compare/v0.17.2...v0.18.0) (2026-07-20)
 
 
