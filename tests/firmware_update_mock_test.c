@@ -43,6 +43,7 @@ static int ssl_server_port;
 static int ssl_ctx_new_fails;
 static int ssl_ca_load_fails;
 static int ssl_new_fails;
+static int ssl_set1_host_fails;
 static int ssl_connect_fails;
 static int ssl_verify_fails;
 static int ssl_write_fails;
@@ -188,7 +189,7 @@ SSL *SSL_new(SSL_CTX *ctx) { (void)ctx; ssl_response_len = 0; ssl_response_offse
 void SSL_free(SSL *ssl) { (void)ssl; }
 int SSL_set_fd(SSL *ssl, int fd) { (void)ssl; (void)fd; return 1; }
 long SSL_ctrl(SSL *ssl, int cmd, long larg, void *parg) { (void)ssl; (void)cmd; (void)larg; (void)parg; return 1; }
-int SSL_set1_host(SSL *ssl, const char *name) { (void)ssl; (void)name; return 1; }
+int SSL_set1_host(SSL *ssl, const char *name) { (void)ssl; (void)name; return ssl_set1_host_fails ? 0 : 1; }
 int SSL_connect(SSL *ssl) { (void)ssl; return ssl_connect_fails ? 0 : 1; }
 long SSL_get_verify_result(const SSL *ssl) { (void)ssl; return ssl_verify_fails ? 7 : X509_V_OK; }
 int SSL_write(SSL *ssl, const void *buf, int num) {
@@ -546,6 +547,9 @@ static int test_https_transport(void)
     ssl_new_fails = 1;
     CHECK(download_text(url, &body) == -1);
     ssl_new_fails = 0;
+    ssl_set1_host_fails = 1;
+    CHECK(download_text(url, &body) == -1);
+    ssl_set1_host_fails = 0;
     ssl_connect_fails = 1;
     CHECK(download_text(url, &body) == -1);
     ssl_connect_fails = 0;

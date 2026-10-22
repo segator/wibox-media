@@ -470,7 +470,11 @@ static int fetch_once(const char *url, body_writer_fn writer, void *writer_ctx,
     SSL_set_fd(ssl, fd);
     SSL_ctrl(ssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_host_name, (void *)host);
     if (SSL_set1_host(ssl, host) != 1) {
-        log_line(stderr, "[!] SSL_set1_host failed for %s", host);
+        log_line(stderr, "[!] TLS hostname verification setup failed for %s", host);
+        SSL_free(ssl);
+        SSL_CTX_free(ctx);
+        close(fd);
+        return -1;
     }
     if (SSL_connect(ssl) != 1) {
         log_line(stderr, "[!] SSL_connect failed for %s", host);
