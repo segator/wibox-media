@@ -58,6 +58,8 @@ developer-controls	Local control FIFO	A UART frame is injected locally	host.uart
 developer-controls	Bounded media diagnostics	A five-second video test runs	host.video-worker,contract.runtime
 developer-controls	Simulations do not flash firmware	A simulation completes	host.call-flow,contract.runtime
 firmware-updates	Release update discovery	A newer release exists	host.firmware-updater,contract.runtime
+firmware-updates	HTTPS and checksum download	Hostname verification cannot be configured	host.firmware-updater
+firmware-updates	HTTPS and checksum download	Untrusted certificate chain	host.firmware-updater
 firmware-updates	HTTPS and checksum download	Download checksum differs	host.firmware-updater
 firmware-updates	Character-device MTD flash	Image exceeds the safe limit	host.firmware-updater,contract.image
 firmware-updates	Mandatory read-back verification	MTD does not implement fsync	host.firmware-updater

@@ -18,7 +18,7 @@ host.snapshot-file	host	make test-snapshot-file	tests/snapshot_file_test.c	Publi
 host.hardware-watchdog	host	make test-hardware-watchdog	tests/hardware_watchdog_mock_test.c	Watchdog de kernel simulado, heartbeat, stale, disarm y OTA
 host.app-watchdog	host	make test-app-watchdog	tests/app_watchdog_integration_test.sh	Reinicio de daemon, guardas OTA y rotacion en sandbox
 host.wifi	host	make test-wifi-portal	tests/wifi_portal_test.sh	Seleccion de modo, reintentos sin reboot, portal AP, escritura atomica y retorno a la red guardada
-host.firmware-updater	host	make test-firmware-update	tests/firmware_update_mock_test.c	MTD simulado, erase/write/readback, checksum, guardas y reboot
+host.firmware-updater	host	make test-firmware-update	tests/firmware_update_mock_test.c	TLS: fallo al configurar hostname; MTD simulado, erase/write/readback, checksum, guardas y reboot
 host.coverage	host	make coverage	tests/code_coverage.py	Gates de linea y rama por modulo critico
 contract.runtime	contract	make test-runtime-contract	tests/runtime_contract_test.py	Cableado productivo de llamadas, media, boot, release e imagen
 contract.image	contract	make verify-image	scripts/verify_image.sh	Invariantes del cramfs y exclusion de artefactos legacy
